@@ -1,5 +1,5 @@
 -- ============================================================
--- CELESTIAL v3.0 (Splash + Settings + Color Palette + H Fix)
+-- CELESTIAL v4.0 (Cosmetics + Troll + Keybinds + Fixes)
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -13,23 +13,27 @@ local CELESTIAL_ASSET = "rbxassetid://94872985442978"
 
 -- ==================== CONFIG ====================
 local CONFIG = {
-    -- Colors (Default: Purple)
     Accent = Color3.fromRGB(160, 100, 255),
     Bg = Color3.fromRGB(12, 12, 14),
     CardBg = Color3.fromRGB(20, 20, 24),
     Text = Color3.fromRGB(240, 240, 240),
     TextDark = Color3.fromRGB(150, 150, 160),
 
-    -- Features
+    -- Movement
     FlyEnabled = false,
     FlySpeed = 60,
     NoclipEnabled = false,
-    
-    -- Aimbot Settings
+    SpeedEnabled = false,
+    WalkSpeed = 50,
+
+    -- Aimbot
     AimbotEnabled = true,
     AimFOV = 200,
     AimSmooth = 0.35,
-    AimPart = "Head", -- Head, Torso, HumanoidRootPart
+    AimPart = "Head",
+    AimPrediction = 0.1,
+    AimAutoFire = false,
+    AimVisibleCheck = false,
 
     -- Visuals
     ESPEnabled = true,
@@ -37,6 +41,22 @@ local CONFIG = {
     ESP_Name = true,
     ESP_Health = true,
     ESP_Dist = true,
+
+    -- Cosmetics
+    WingsEnabled = false,
+    CrownEnabled = false,
+    HaloEnabled = false,
+
+    -- Troll
+    FlingEnabled = false,
+}
+
+local Keybinds = {
+    ToggleMenu = Enum.KeyCode.H,
+    Fly = Enum.KeyCode.F,
+    Noclip = Enum.KeyCode.G,
+    Unload = Enum.KeyCode.Delete,
+    Fling = Enum.KeyCode.V,
 }
 
 local State = {
@@ -44,7 +64,9 @@ local State = {
     Connections = {},
     Drawings = {},
     ESPCache = {},
-    ThemeObjects = {} -- Для смены цвета
+    ThemeObjects = {},
+    ListeningBind = nil,
+    Cosmetics = { Wings = nil, Crown = nil, Halo = nil }
 }
 
 local function Track(c) table.insert(State.Connections, c) end
@@ -69,18 +91,11 @@ local function Create(class, props, children)
     return inst
 end
 
-local function CreateCorner(radius)
-    return Create("UICorner", { CornerRadius = UDim.new(0, radius) })
-end
-
--- Сохраняем элементы для смены цвета
-local function RegisterTheme(obj, type)
-    table.insert(State.ThemeObjects, {obj = obj, type = type})
-    return obj
-end
+local function CreateCorner(radius) return Create("UICorner", { CornerRadius = UDim.new(0, radius) }) end
+local function RegisterTheme(obj, type) table.insert(State.ThemeObjects, {obj = obj, type = type}); return obj end
 
 -- ============================================================
--- 1. SPLASH SCREEN
+-- 1. SPLASH SCREEN (Longer duration)
 -- ============================================================
 local splashGui = Create("ScreenGui", { Name = "CelestialSplash", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 1000, Parent = LocalPlayer:WaitForChild("PlayerGui") })
 local splashBg = Create("Frame", { Parent = splashGui, Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = CONFIG.Bg, BorderSizePixel = 0 })
@@ -93,8 +108,8 @@ for i = 1, 36 do
     particles[i] = p
 end
 
-local splashImage = Create("ImageLabel", { Parent = splashBg, Size = UDim2.new(0, 200, 0, 200), Position = UDim2.new(0.5, -100, 0.5, -140), BackgroundTransparency = 1, Image = CELESTIAL_ASSET, ScaleType = Enum.ScaleType.Fit })
-local splashTitle = Create("TextLabel", { Parent = splashBg, Size = UDim2.new(0, 400, 0, 40), Position = UDim2.new(0.5, -200, 0.5, 60), BackgroundTransparency = 1, Text = "CELESTIAL", Font = Enum.Font.GothamBlack, TextSize = 28, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Center })
+Create("ImageLabel", { Parent = splashBg, Size = UDim2.new(0, 200, 0, 200), Position = UDim2.new(0.5, -100, 0.5, -140), BackgroundTransparency = 1, Image = CELESTIAL_ASSET, ScaleType = Enum.ScaleType.Fit })
+Create("TextLabel", { Parent = splashBg, Size = UDim2.new(0, 400, 0, 40), Position = UDim2.new(0.5, -200, 0.5, 60), BackgroundTransparency = 1, Text = "CELESTIAL", Font = Enum.Font.GothamBlack, TextSize = 28, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Center })
 local splashSub = Create("TextLabel", { Parent = splashBg, Size = UDim2.new(0, 400, 0, 20), Position = UDim2.new(0.5, -200, 0.5, 100), BackgroundTransparency = 1, Text = "LOADING INTERFACE...", Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = CONFIG.Accent, TextXAlignment = Enum.TextXAlignment.Center })
 
 local barBg = Create("Frame", { Parent = splashBg, Size = UDim2.new(0, 300, 0, 6), Position = UDim2.new(0.5, -150, 0.5, 140), BackgroundColor3 = Color3.fromRGB(40, 40, 50), BorderSizePixel = 0 }, { CreateCorner(3) })
@@ -106,7 +121,8 @@ local function PlaySplash(callback)
     local ringRotation = 0
     local connection
     connection = RunService.RenderStepped:Connect(function()
-        progress = math.min(progress + 0.02, 1)
+        -- Скорость загрузки уменьшена (длится дольше)
+        progress = math.min(progress + 0.006, 1) 
         barFill.Size = UDim2.new(progress, 0, 1, 0)
         percentText.Text = math.floor(progress * 100) .. "%"
         ringRotation = ringRotation + 0.02
@@ -118,7 +134,7 @@ local function PlaySplash(callback)
         end
         if progress >= 1 then
             connection:Disconnect()
-            task.wait(0.2)
+            task.wait(0.5)
             local fade = TweenService:Create(splashBg, TweenInfo.new(0.5), { BackgroundTransparency = 1 })
             fade:Play()
             fade.Completed:Connect(function()
@@ -130,14 +146,93 @@ local function PlaySplash(callback)
 end
 
 -- ============================================================
--- 2. MAIN UI
+-- 2. COSMETICS LOGIC (Wings, Crown, Halo)
 -- ============================================================
-local mainGui -- Переменная для хоткея
+local function CreateCosmetics()
+    local char = LocalPlayer.Character
+    if not char then return end
+
+    -- Halo
+    local haloPart = Create("Part", { Name = "CelestialHalo", Shape = Enum.PartType.Torus, Size = Vector3.new(2.5, 0.3, 2.5), Material = Enum.Material.Neon, Color = CONFIG.Accent, Transparency = 0.2, CanCollide = false, Anchored = true })
+    Create("PointLight", { Parent = haloPart, Color = CONFIG.Accent, Brightness = 2, Range = 10 })
+    haloPart.Parent = Workspace
+    State.Cosmetics.Halo = haloPart
+
+    -- Crown
+    local crownPart = Create("Part", { Name = "CelestialCrown", Size = Vector3.new(1, 1, 1), Transparency = 1, CanCollide = false, Anchored = true })
+    local crownMesh = Create("SpecialMesh", { Parent = crownPart, MeshType = Enum.MeshType.FileMesh, MeshId = "rbxassetid://100298150", Scale = Vector3.new(0.5, 0.5, 0.5) })
+    local crownTexture = Create("Texture", { Parent = crownPart, Texture = "rbxassetid://100298166" })
+    crownPart.Parent = Workspace
+    State.Cosmetics.Crown = crownPart
+
+    -- Wings (using Beams)
+    local wingModel = Create("Model", { Name = "CelestialWings" })
+    local wingRoot = Create("Part", { Name = "WingRoot", Size = Vector3.new(0.1,0.1,0.1), Transparency = 1, CanCollide = false, Anchored = true, Parent = wingModel })
+    
+    local wingAttachments = {}
+    for i = 1, 8 do
+        local att = Create("Attachment", { Parent = wingRoot, Position = Vector3.new(0.5 + i * 0.6, 1 + i * 0.5, -0.5 - i * 0.2) })
+        local attL = Create("Attachment", { Parent = wingRoot, Position = Vector3.new(-0.5 - i * 0.6, 1 + i * 0.5, -0.5 - i * 0.2) })
+        table.insert(wingAttachments, att)
+        table.insert(wingAttachments, attL)
+        
+        local beamR = Create("Beam", { Parent = wingRoot, Attachment0 = wingAttachments[1], Attachment1 = att, Color = ColorSequence.new(CONFIG.Accent, Color3.new(1,1,1)), Transparency = NumberSequence.new(0.2), Width0 = 1.5, Width1 = 0.1, FaceCamera = true, LightEmission = 1, Texture = "rbxassetid://4966571357" })
+        local beamL = Create("Beam", { Parent = wingRoot, Attachment0 = wingAttachments[2], Attachment1 = attL, Color = ColorSequence.new(CONFIG.Accent, Color3.new(1,1,1)), Transparency = NumberSequence.new(0.2), Width0 = 1.5, Width1 = 0.1, FaceCamera = true, LightEmission = 1, Texture = "rbxassetid://4966571357" })
+    end
+    wingModel.Parent = Workspace
+    State.Cosmetics.Wings = wingModel
+end
+
+local function UpdateCosmetics()
+    local char = LocalPlayer.Character
+    if not char then return end
+    local head = char:FindFirstChild("Head")
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+
+    if State.Cosmetics.Halo then
+        State.Cosmetics.Halo.Transparency = CONFIG.HaloEnabled and 0.2 or 1
+        if head and CONFIG.HaloEnabled then
+            State.Cosmetics.Halo.CFrame = head.CFrame * CFrame.new(0, 1.2, 0) * CFrame.Angles(0, tick() * 2, math.rad(90))
+            State.Cosmetics.Halo.Color = CONFIG.Accent
+        end
+    end
+
+    if State.Cosmetics.Crown then
+        State.Cosmetics.Crown.Transparency = CONFIG.CrownEnabled and 0 or 1
+        if head and CONFIG.CrownEnabled then
+            State.Cosmetics.Crown.CFrame = head.CFrame * CFrame.new(0, 0.6, 0)
+            for _, v in ipairs(State.Cosmetics.Crown:GetChildren()) do
+                if v:IsA("Mesh") or v:IsA("SpecialMesh") then v.VertexColor = CONFIG.Accent end
+            end
+        end
+    end
+
+    if State.Cosmetics.Wings then
+        State.Cosmetics.Wings.Parent = CONFIG.WingsEnabled and Workspace or nil
+        if hrp and CONFIG.WingsEnabled then
+            local root = State.Cosmetics.Wings:FindFirstChild("WingRoot")
+            if root then
+                root.CFrame = hrp.CFrame * CFrame.new(0, 0.5, 1)
+                for _, beam in ipairs(root:GetChildren()) do
+                    if beam:IsA("Beam") then
+                        beam.Color = ColorSequence.new(CONFIG.Accent, Color3.new(1,1,1))
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- ============================================================
+-- 3. MAIN UI
+-- ============================================================
+local mainGui
+local menuFrame
 
 local function BuildMainUI()
     mainGui = Create("ScreenGui", { Name = "CelestialUI", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 999, Parent = LocalPlayer:WaitForChild("PlayerGui") })
 
-    -- Left Keybinds Panel
+    -- LEFT PANEL (Keybinds)
     local keybindsFrame = Create("Frame", { Parent = mainGui, Size = UDim2.new(0, 180, 0, 320), Position = UDim2.new(0, 20, 0, 100), BackgroundColor3 = CONFIG.CardBg, BackgroundTransparency = 0.1, BorderSizePixel = 0 }, { CreateCorner(8) })
     RegisterTheme(Create("UIStroke", { Parent = keybindsFrame, Color = CONFIG.Accent, Thickness = 1, Transparency = 0.8 }), "stroke")
 
@@ -146,33 +241,34 @@ local function BuildMainUI()
     local kbList = Create("ScrollingFrame", { Parent = keybindsFrame, Size = UDim2.new(1, -20, 1, -35), Position = UDim2.new(0, 10, 0, 30), BackgroundTransparency = 1, ScrollBarThickness = 2, ScrollBarImageColor3 = CONFIG.Accent, CanvasSize = UDim2.new(0,0,0,0), AutomaticCanvasSize = Enum.AutomaticSize.Y })
     Create("UIListLayout", { Parent = kbList, Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder })
 
-    local function AddKeybind(name, key)
+    local function AddKeybindRow(name)
         local row = Create("Frame", { Parent = kbList, Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1 })
         Create("TextLabel", { Parent = row, Size = UDim2.new(0.7, 0, 1, 0), BackgroundTransparency = 1, Text = name, Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = CONFIG.TextDark, TextXAlignment = Enum.TextXAlignment.Left })
-        Create("TextLabel", { Parent = row, Size = UDim2.new(0, 20, 0, 18), Position = UDim2.new(1, -20, 0.5, -9), BackgroundColor3 = CONFIG.Bg, Text = key, Font = Enum.Font.Code, TextSize = 10, TextColor3 = CONFIG.Accent }, { CreateCorner(4) })
+        local keyLabel = Create("TextLabel", { Parent = row, Size = UDim2.new(0, 30, 0, 18), Position = UDim2.new(1, -30, 0.5, -9), BackgroundColor3 = CONFIG.Bg, Text = "None", Font = Enum.Font.Code, TextSize = 10, TextColor3 = CONFIG.Accent }, { CreateCorner(4) })
+        return keyLabel
     end
-    AddKeybind("Toggle UI", "H")
-    AddKeybind("Fly", "F")
-    AddKeybind("Noclip", "G")
-    AddKeybind("Unload", "Del")
+    AddKeybindRow("Toggle Menu")
+    AddKeybindRow("Fly")
+    AddKeybindRow("Noclip")
+    AddKeybindRow("Fling")
 
-    -- Main Menu
-    local menu = Create("Frame", { Parent = mainGui, Size = UDim2.new(0, 560, 0, 400), Position = UDim2.new(0.5, -280, 0.5, -200), BackgroundColor3 = CONFIG.Bg, BackgroundTransparency = 0.05, BorderSizePixel = 0 }, { CreateCorner(12) })
-    RegisterTheme(Create("UIStroke", { Parent = menu, Color = CONFIG.Accent, Thickness = 1, Transparency = 0.6 }), "stroke")
+    -- MAIN MENU FRAME
+    menuFrame = Create("Frame", { Parent = mainGui, Size = UDim2.new(0, 560, 0, 400), Position = UDim2.new(0.5, -280, 0.5, -200), BackgroundColor3 = CONFIG.Bg, BackgroundTransparency = 0.05, BorderSizePixel = 0 }, { CreateCorner(12) })
+    RegisterTheme(Create("UIStroke", { Parent = menuFrame, Color = CONFIG.Accent, Thickness = 1, Transparency = 0.6 }), "stroke")
 
-    local header = Create("Frame", { Parent = menu, Size = UDim2.new(1, 0, 0, 50), BackgroundTransparency = 1 })
+    local header = Create("Frame", { Parent = menuFrame, Size = UDim2.new(1, 0, 0, 50), BackgroundTransparency = 1 })
     Create("ImageLabel", { Parent = header, Size = UDim2.new(0, 28, 0, 28), Position = UDim2.new(0, 16, 0.5, -14), BackgroundTransparency = 1, Image = CELESTIAL_ASSET, ScaleType = Enum.ScaleType.Fit })
     Create("TextLabel", { Parent = header, Size = UDim2.new(0, 200, 0, 20), Position = UDim2.new(0, 54, 0, 10), BackgroundTransparency = 1, Text = "Celestial", Font = Enum.Font.GothamBold, TextSize = 16, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left })
-    RegisterTheme(Create("TextLabel", { Parent = header, Size = UDim2.new(0, 200, 0, 14), Position = UDim2.new(0, 54, 0, 28), BackgroundTransparency = 1, Text = "v3.0 | Universal", Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = CONFIG.Accent, TextXAlignment = Enum.TextXAlignment.Left }), "text")
+    RegisterTheme(Create("TextLabel", { Parent = header, Size = UDim2.new(0, 200, 0, 14), Position = UDim2.new(0, 54, 0, 28), BackgroundTransparency = 1, Text = "v4.0 | Universal", Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = CONFIG.Accent, TextXAlignment = Enum.TextXAlignment.Left }), "text")
 
     local closeBtn = Create("TextButton", { Parent = header, Size = UDim2.new(0, 24, 0, 24), Position = UDim2.new(1, -36, 0.5, -12), BackgroundTransparency = 1, Text = "×", Font = Enum.Font.GothamBold, TextSize = 20, TextColor3 = CONFIG.TextDark })
-    closeBtn.MouseButton1Click:Connect(function() mainGui.Enabled = false end)
+    closeBtn.MouseButton1Click:Connect(function() menuFrame.Visible = false end)
 
-    local sidebar = Create("Frame", { Parent = menu, Size = UDim2.new(0, 140, 1, -50), Position = UDim2.new(0, 0, 0, 50), BackgroundTransparency = 1 })
+    local sidebar = Create("Frame", { Parent = menuFrame, Size = UDim2.new(0, 140, 1, -50), Position = UDim2.new(0, 0, 0, 50), BackgroundTransparency = 1 })
     Create("UIListLayout", { Parent = sidebar, Padding = UDim.new(0, 4), HorizontalAlignment = Enum.HorizontalAlignment.Center })
     Create("UIPadding", { Parent = sidebar, PaddingTop = UDim.new(0, 10) })
 
-    local content = Create("Frame", { Parent = menu, Size = UDim2.new(1, -160, 1, -70), Position = UDim2.new(0, 150, 0, 60), BackgroundTransparency = 1 })
+    local content = Create("Frame", { Parent = menuFrame, Size = UDim2.new(1, -160, 1, -70), Position = UDim2.new(0, 150, 0, 60), BackgroundTransparency = 1 })
 
     local Pages = {}
     local function CreateTab(name, order)
@@ -184,9 +280,7 @@ local function BuildMainUI()
         btn.MouseButton1Click:Connect(function()
             for _, p in pairs(Pages) do p.Visible = false end
             page.Visible = true
-            for _, b in ipairs(sidebar:GetChildren()) do
-                if b:IsA("TextButton") then b.TextColor3 = CONFIG.TextDark; b.BackgroundTransparency = 0.5 end
-            end
+            for _, b in ipairs(sidebar:GetChildren()) do if b:IsA("TextButton") then b.TextColor3 = CONFIG.TextDark; b.BackgroundTransparency = 0.5 end end
             btn.TextColor3 = CONFIG.Text; btn.BackgroundTransparency = 0.2
         end)
         return page
@@ -196,9 +290,7 @@ local function BuildMainUI()
         local card = Create("Frame", { Parent = parent, Size = UDim2.new(1, -10, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = CONFIG.CardBg, BackgroundTransparency = 0.3 }, { CreateCorner(8) })
         Create("UIListLayout", { Parent = card, Padding = UDim.new(0, 8) })
         Create("UIPadding", { Parent = card, PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 10), PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) })
-        if titleText then
-            RegisterTheme(Create("TextLabel", { Parent = card, Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1, Text = titleText:upper(), Font = Enum.Font.GothamBold, TextSize = 10, TextColor3 = CONFIG.Accent, TextXAlignment = Enum.TextXAlignment.Left }), "text")
-        end
+        if titleText then RegisterTheme(Create("TextLabel", { Parent = card, Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1, Text = titleText:upper(), Font = Enum.Font.GothamBold, TextSize = 10, TextColor3 = CONFIG.Accent, TextXAlignment = Enum.TextXAlignment.Left }), "text") end
         return card
     end
 
@@ -208,8 +300,7 @@ local function BuildMainUI()
         local sw = Create("Frame", { Parent = row, Size = UDim2.new(0, 30, 0, 14), Position = UDim2.new(1, -30, 0.5, -7), BackgroundColor3 = default and CONFIG.Accent or CONFIG.Bg }, { CreateCorner(10) })
         local circle = Create("Frame", { Parent = sw, Size = UDim2.new(0, 10, 0, 10), Position = default and UDim2.new(1, -12, 0.5, -5) or UDim2.new(0, 2, 0.5, -5), BackgroundColor3 = CONFIG.Text }, { CreateCorner(5) })
         local state = default
-        local btn = Create("TextButton", { Parent = row, Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "" })
-        btn.MouseButton1Click:Connect(function()
+        Create("TextButton", { Parent = row, Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "" }).MouseButton1Click:Connect(function()
             state = not state
             sw.BackgroundColor3 = state and CONFIG.Accent or CONFIG.Bg
             circle.Position = state and UDim2.new(1, -12, 0.5, -5) or UDim2.new(0, 2, 0.5, -5)
@@ -217,7 +308,6 @@ local function BuildMainUI()
         end)
     end
 
-    -- НОВОЕ: Ползунок
     local function CreateSlider(parent, text, min, max, default, cb)
         local row = Create("Frame", { Parent = parent, Size = UDim2.new(1, 0, 0, 40), BackgroundTransparency = 1 })
         Create("TextLabel", { Parent = row, Size = UDim2.new(1, -40, 0, 16), BackgroundTransparency = 1, Text = text, Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left })
@@ -238,54 +328,74 @@ local function BuildMainUI()
         Track(UserInputService.InputChanged:Connect(function(input) if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then update(input.Position.X) end end))
         Track(UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end))
     end
-
-    -- НОВОЕ: Выбор из списка
+    
     local function CreateDropdown(parent, text, options, default, cb)
         local row = Create("Frame", { Parent = parent, Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1 })
         Create("TextLabel", { Parent = row, Size = UDim2.new(0.5, 0, 1, 0), BackgroundTransparency = 1, Text = text, Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left })
         local btn = Create("TextButton", { Parent = row, Size = UDim2.new(0, 80, 0, 20), Position = UDim2.new(1, -80, 0.5, -10), BackgroundColor3 = CONFIG.Bg, Text = default, Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = CONFIG.Accent }, { CreateCorner(4) })
-        
-        local idx = 1
-        for i, v in ipairs(options) do if v == default then idx = i end end
-        
+        local idx = 1; for i, v in ipairs(options) do if v == default then idx = i end end
         btn.MouseButton1Click:Connect(function()
-            idx = idx + 1
-            if idx > #options then idx = 1 end
-            btn.Text = options[idx]
-            cb(options[idx])
+            idx = idx + 1; if idx > #options then idx = 1 end
+            btn.Text = options[idx]; cb(options[idx])
         end)
     end
 
-    -- Создание вкладок
     local homePage = CreateTab("Home", 1)
     local combatPage = CreateTab("Combat", 2)
     local visPage = CreateTab("Visuals", 3)
-    local settingsPage = CreateTab("Settings", 4)
+    local trollPage = CreateTab("Troll", 4)
+    local movePage = CreateTab("Movement", 5)
+    local settingsPage = CreateTab("Settings", 6)
 
-    -- Home
+    -- HOME
     local infoCard = CreateCard(homePage, "Player Profile")
     Create("TextLabel", { Parent = infoCard, Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1, Text = "User: " .. LocalPlayer.Name, Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left })
-    Create("TextLabel", { Parent = infoCard, Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1, Text = "User ID: " .. LocalPlayer.UserId, Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = CONFIG.TextDark, TextXAlignment = Enum.TextXAlignment.Left })
-
-    -- Combat
+    
+    -- COMBAT
     local combatCard = CreateCard(combatPage, "Aimbot Settings")
     CreateToggle(combatCard, "Enable Aimbot (RMB)", CONFIG.AimbotEnabled, function(v) CONFIG.AimbotEnabled = v end)
     CreateSlider(combatCard, "FOV Radius", 50, 500, CONFIG.AimFOV, function(v) CONFIG.AimFOV = v; FOVCircle.Radius = v end)
     CreateSlider(combatCard, "Smoothness", 1, 100, CONFIG.AimSmooth * 100, function(v) CONFIG.AimSmooth = v / 100 end)
     CreateDropdown(combatCard, "Target Part", {"Head", "Torso", "HumanoidRootPart"}, CONFIG.AimPart, function(v) CONFIG.AimPart = v end)
+    CreateToggle(combatCard, "Auto Fire", CONFIG.AimAutoFire, function(v) CONFIG.AimAutoFire = v end)
+    CreateToggle(combatCard, "Visible Check", CONFIG.AimVisibleCheck, function(v) CONFIG.AimVisibleCheck = v end)
 
-    -- Visuals
+    -- VISUALS
     local visCard = CreateCard(visPage, "ESP Settings")
     CreateToggle(visCard, "Enable ESP", CONFIG.ESPEnabled, function(v) CONFIG.ESPEnabled = v end)
     CreateToggle(visCard, "Box", CONFIG.ESP_Box, function(v) CONFIG.ESP_Box = v end)
-    CreateToggle(visCard, "Name", CONFIG.ESP_Name, function(v) CONFIG.ESP_Name = v end)
     CreateToggle(visCard, "Health Bar", CONFIG.ESP_Health, function(v) CONFIG.ESP_Health = v end)
-    CreateToggle(visCard, "Distance", CONFIG.ESP_Dist, function(v) CONFIG.ESP_Dist = v end)
+    
+    local cosCard = CreateCard(visPage, "Cosmetics")
+    CreateToggle(cosCard, "Wings", CONFIG.WingsEnabled, function(v) CONFIG.WingsEnabled = v end)
+    CreateToggle(cosCard, "Crown", CONFIG.CrownEnabled, function(v) CONFIG.CrownEnabled = v end)
+    CreateToggle(cosCard, "Halo", CONFIG.HaloEnabled, function(v) CONFIG.HaloEnabled = v end)
 
-    -- Settings (Palette)
-    local themeCard = CreateCard(settingsPage, "Accent Color")
+    -- TROLL
+    local trollCard = CreateCard(trollPage, "Trolling")
+    CreateToggle(trollCard, "Auto Fling Nearby", CONFIG.FlingEnabled, function(v) CONFIG.FlingEnabled = v end)
+    local flingBtn = Create("TextButton", { Parent = trollCard, Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = CONFIG.Accent, Text = "Fling Everyone", Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = CONFIG.Text }, { CreateCorner(6) })
+    flingBtn.MouseButton1Click:Connect(function()
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then
+                local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then hrp.Velocity = Vector3.new(100000, 100000, 100000) end
+            end
+        end
+    end)
+
+    -- MOVEMENT
+    local moveCard = CreateCard(movePage, "Movement")
+    CreateToggle(moveCard, "Fly", CONFIG.FlyEnabled, function(v) CONFIG.FlyEnabled = v end)
+    CreateSlider(moveCard, "Fly Speed", 20, 200, CONFIG.FlySpeed, function(v) CONFIG.FlySpeed = v end)
+    CreateToggle(moveCard, "Noclip", CONFIG.NoclipEnabled, function(v) CONFIG.NoclipEnabled = v end)
+    CreateToggle(moveCard, "Speed Hack", CONFIG.SpeedEnabled, function(v) CONFIG.SpeedEnabled = v end)
+    CreateSlider(moveCard, "WalkSpeed", 16, 150, CONFIG.WalkSpeed, function(v) CONFIG.WalkSpeed = v end)
+
+    -- SETTINGS (Theme + Keybinds + Unload)
+    local themeCard = CreateCard(settingsPage, "UI Accent Color")
     local paletteFrame = Create("Frame", { Parent = themeCard, Size = UDim2.new(1, 0, 0, 40), BackgroundTransparency = 1 })
-    Create("UIListLayout", { Parent = paletteFrame, FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8) })
+    Create("UIListLayout", { Parent = paletteFrame, FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8), Wraps = true })
     
     local colors = {
         {Name = "Purple", Color = Color3.fromRGB(160, 100, 255)},
@@ -294,34 +404,49 @@ local function BuildMainUI()
         {Name = "Red", Color = Color3.fromRGB(255, 100, 100)},
         {Name = "Pink", Color = Color3.fromRGB(255, 100, 200)},
         {Name = "White", Color = Color3.fromRGB(240, 240, 240)},
+        {Name = "Orange", Color = Color3.fromRGB(255, 180, 100)},
+        {Name = "Cyan", Color = Color3.fromRGB(100, 255, 255)},
     }
 
     for _, c in ipairs(colors) do
-        local btn = Create("TextButton", { Parent = paletteFrame, Size = UDim2.new(0, 30, 0, 30), BackgroundColor3 = c.Color, Text = "" }, { CreateCorner(15) })
+        local btn = Create("TextButton", { Parent = paletteFrame, Size = UDim2.new(0, 28, 0, 28), BackgroundColor3 = c.Color, Text = "" }, { CreateCorner(14) })
         Create("UIStroke", { Parent = btn, Color = Color3.new(1,1,1), Thickness = 1, Transparency = 0.5 })
         btn.MouseButton1Click:Connect(function()
-            CONFIG.Accent = c.Color
-            FOVCircle.Color = c.Color
-            
-            -- Обновляем все элементы
+            CONFIG.Accent = c.Color; FOVCircle.Color = c.Color
             for _, obj in ipairs(State.ThemeObjects) do
                 if obj.obj and obj.obj.Parent then
-                    if obj.type == "stroke" then
-                        TweenService:Create(obj.obj, TweenInfo.new(0.2), {Color = c.Color}):Play()
-                    elseif obj.type == "text" then
-                        TweenService:Create(obj.obj, TweenInfo.new(0.2), {TextColor3 = c.Color}):Play()
-                    end
+                    if obj.type == "stroke" then TweenService:Create(obj.obj, TweenInfo.new(0.2), {Color = c.Color}):Play()
+                    elseif obj.type == "text" then TweenService:Create(obj.obj, TweenInfo.new(0.2), {TextColor3 = c.Color}):Play() end
                 end
             end
-            
-            -- Обновляем ESP
-            for _, t in pairs(State.ESPCache) do
-                if t.box then t.box.Color = c.Color end
-            end
+            UpdateCosmetics()
         end)
     end
+    
+    local bindCard = CreateCard(settingsPage, "Keybinds")
+    local function AddBindRow(name, keyTable, keyName)
+        local row = Create("Frame", { Parent = bindCard, Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1 })
+        Create("TextLabel", { Parent = row, Size = UDim2.new(0.5, 0, 1, 0), BackgroundTransparency = 1, Text = keyName, Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left })
+        local btn = Create("TextButton", { Parent = row, Size = UDim2.new(0, 80, 0, 20), Position = UDim2.new(1, -80, 0.5, -10), BackgroundColor3 = CONFIG.Bg, Text = Keybinds[name].Name, Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = CONFIG.Accent }, { CreateCorner(4) })
+        btn.MouseButton1Click:Connect(function()
+            btn.Text = "Press key..."
+            State.ListeningBind = {Key = name, Button = btn}
+        end)
+    end
+    AddBindRow("ToggleMenu", Keybinds.ToggleMenu, "Toggle Menu")
+    AddBindRow("Fly", Keybinds.Fly, "Fly")
+    AddBindRow("Noclip", Keybinds.Noclip, "Noclip")
+    AddBindRow("Fling", Keybinds.Fling, "Fling")
+    
+    local miscCard = CreateCard(settingsPage, "Misc")
+    local unloadBtn = Create("TextButton", { Parent = miscCard, Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Color3.fromRGB(200, 50, 50), Text = "UNLOAD SCRIPT", Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = CONFIG.Text }, { CreateCorner(6) })
+    unloadBtn.MouseButton1Click:Connect(function() 
+        State.Running = false
+        if mainGui then mainGui:Destroy() end
+        StopFly()
+    end)
 
-    -- Right Quick Actions
+    -- RIGHT QUICK ACTIONS
     local quickFrame = Create("Frame", { Parent = mainGui, Size = UDim2.new(0, 100, 0, 300), Position = UDim2.new(1, -120, 0.5, -150), BackgroundTransparency = 1 })
     Create("UIListLayout", { Parent = quickFrame, Padding = UDim.new(0, 10), HorizontalAlignment = Enum.HorizontalAlignment.Right })
 
@@ -330,30 +455,29 @@ local function BuildMainUI()
         RegisterTheme(Create("UIStroke", { Parent = btn, Color = CONFIG.Accent, Thickness = 1, Transparency = 0.8 }), "stroke")
         btn.MouseButton1Click:Connect(cb)
     end
-
     AddQuickBtn("FLY", function() CONFIG.FlyEnabled = not CONFIG.FlyEnabled; if not CONFIG.FlyEnabled then StopFly() end end)
     AddQuickBtn("NOCLIP", function() CONFIG.NoclipEnabled = not CONFIG.NoclipEnabled end)
     AddQuickBtn("ESP", function() CONFIG.ESPEnabled = not CONFIG.ESPEnabled end)
 
-    -- Drag
+    -- Drag Menu
     local dragging, dragStart, startPos
     header.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true; dragStart = input.Position; startPos = menu.Position end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true; dragStart = input.Position; startPos = menuFrame.Position end
     end)
     Track(UserInputService.InputChanged:Connect(function(input)
         if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
             local delta = input.Position - dragStart
-            menu.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            menuFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
         end
     end))
     Track(UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end))
 
-    menu.Visible = true
+    menuFrame.Visible = true
     Pages["Home"].Visible = true
 end
 
 -- ============================================================
--- 3. LOGIC
+-- 4. LOGIC & LOOPS
 -- ============================================================
 function StopFly()
     local char = LocalPlayer.Character
@@ -379,12 +503,14 @@ end
 
 Track(RunService.Stepped:Connect(function(_, dt)
     if not State.Running then return end
-    if CONFIG.NoclipEnabled then
-        local char = LocalPlayer.Character
-        if char then for _, v in ipairs(char:GetDescendants()) do if v:IsA("BasePart") then v.CanCollide = false end end end
+    local char = LocalPlayer.Character
+    if char then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum and CONFIG.SpeedEnabled then hum.WalkSpeed = CONFIG.WalkSpeed elseif hum then hum.WalkSpeed = 16 end
+        if CONFIG.NoclipEnabled then for _, v in ipairs(char:GetDescendants()) do if v:IsA("BasePart") then v.CanCollide = false end end end
     end
+
     if CONFIG.FlyEnabled then
-        local char = LocalPlayer.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         local bv = hrp and hrp:FindFirstChild("FlyBV")
         local bg = hrp and hrp:FindFirstChild("FlyBG")
@@ -401,14 +527,27 @@ Track(RunService.Stepped:Connect(function(_, dt)
         bv.Velocity = bv.Velocity:Lerp(vel, math.min(dt * 10, 1))
         bg.CFrame = cam.CFrame
     end
+
+    if CONFIG.FlingEnabled then
+        local myRoot = char and char:FindFirstChild("HumanoidRootPart")
+        if myRoot then
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer and p.Character then
+                    local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+                    if hrp and (hrp.Position - myRoot.Position).Magnitude < 20 then
+                        hrp.Velocity = Vector3.new(100000, 100000, 100000)
+                    end
+                end
+            end
+        end
+    end
 end))
 
--- Aimbot
+-- Aimbot & Cosmetics
 local function getPart(char)
     if CONFIG.AimPart == "Head" then return char:FindFirstChild("Head") end
     if CONFIG.AimPart == "Torso" then return char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso") end
-    if CONFIG.AimPart == "HumanoidRootPart" then return char:FindFirstChild("HumanoidRootPart") end
-    return char:FindFirstChild("Head")
+    return char:FindFirstChild("HumanoidRootPart")
 end
 
 Track(RunService.RenderStepped:Connect(function()
@@ -439,11 +578,16 @@ Track(RunService.RenderStepped:Connect(function()
             if typeof(mousemoverel) == "function" then
                 mousemoverel((sp.X - mouse.X) * CONFIG.AimSmooth, (sp.Y - mouse.Y) * CONFIG.AimSmooth)
             end
+            if CONFIG.AimAutoFire and tick() % 0.1 < 0.02 then
+                local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+                if tool then pcall(function() tool:Activate() end) end
+            end
         end
     end
+    UpdateCosmetics()
 end))
 
--- ESP
+-- ESP (Fixed Ghosts)
 Track(RunService.Heartbeat:Connect(function()
     if not State.Running then return end
     if not CONFIG.ESPEnabled then
@@ -451,22 +595,18 @@ Track(RunService.Heartbeat:Connect(function()
         return
     end
 
+    local active = {}
     for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character then
+        if p ~= LocalPlayer and p.Character and p.Character.Parent then
             local char = p.Character
             local hum = char:FindFirstChildOfClass("Humanoid")
             local hrp = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
             local head = char:FindFirstChild("Head")
 
-            if hum and hum.Health > 0 and hrp and head then
+            if hum and hum.Health > 0 and hrp and head and char.Parent == Workspace then
+                active[p] = true
                 if not State.ESPCache[p] then
-                    State.ESPCache[p] = {
-                        box = TrackD(Draw("Square")),
-                        name = TrackD(Draw("Text")),
-                        healthBg = TrackD(Draw("Square")),
-                        healthBar = TrackD(Draw("Square")),
-                        dist = TrackD(Draw("Text"))
-                    }
+                    State.ESPCache[p] = { box = TrackD(Draw("Square")), name = TrackD(Draw("Text")), healthBg = TrackD(Draw("Square")), healthBar = TrackD(Draw("Square")), dist = TrackD(Draw("Text")) }
                 end
                 local t = State.ESPCache[p]
                 local hSp, hOn = Workspace.CurrentCamera:WorldToViewportPoint(head.Position + Vector3.new(0,0.5,0))
@@ -476,95 +616,70 @@ Track(RunService.Heartbeat:Connect(function()
                     local h = math.abs(rSp.Y - hSp.Y)
                     local w = h * 0.55
                     local dist = (hrp.Position - Workspace.CurrentCamera.CFrame.Position).Magnitude
-
-                    -- Box
+                    
                     t.box.Visible = CONFIG.ESP_Box
-                    t.box.Position = Vector2.new(hSp.X - w/2, hSp.Y)
-                    t.box.Size = Vector2.new(w, h)
-                    t.box.Color = CONFIG.Accent
-                    t.box.Thickness = 1
+                    t.box.Position = Vector2.new(hSp.X - w/2, hSp.Y); t.box.Size = Vector2.new(w, h); t.box.Color = CONFIG.Accent; t.box.Thickness = 1
+                    t.name.Visible = true; t.name.Text = p.Name; t.name.Position = Vector2.new(hSp.X, hSp.Y - 15); t.name.Color = Color3.new(1,1,1); t.name.Size = 13; t.name.Center = true; t.name.Outline = true
+                    t.dist.Visible = true; t.dist.Text = math.floor(dist).."m"; t.dist.Position = Vector2.new(hSp.X, hSp.Y + h + 2); t.dist.Color = Color3.fromRGB(200,200,200); t.dist.Size = 11; t.dist.Center = true; t.dist.Outline = true
 
-                    -- Name
-                    t.name.Visible = CONFIG.ESP_Name
-                    t.name.Text = p.Name
-                    t.name.Position = Vector2.new(hSp.X, hSp.Y - 15)
-                    t.name.Color = Color3.new(1,1,1)
-                    t.name.Size = 13
-                    t.name.Center = true
-                    t.name.Outline = true
-
-                    -- Health
                     if CONFIG.ESP_Health then
                         local r = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
-                        t.healthBg.Visible = true
-                        t.healthBg.Position = Vector2.new(hSp.X - w/2 - 5, hSp.Y)
-                        t.healthBg.Size = Vector2.new(3, h)
-                        t.healthBg.Color = Color3.fromRGB(30,30,30)
-                        t.healthBg.Filled = true
-                        
-                        t.healthBar.Visible = true
-                        t.healthBar.Position = Vector2.new(hSp.X - w/2 - 5, hSp.Y + h*(1-r))
-                        t.healthBar.Size = Vector2.new(3, h*r)
-                        t.healthBar.Color = Color3.fromRGB(255*(1-r), 255*r, 80)
-                        t.healthBar.Filled = true
+                        t.healthBg.Visible = true; t.healthBg.Position = Vector2.new(hSp.X - w/2 - 5, hSp.Y); t.healthBg.Size = Vector2.new(3, h); t.healthBg.Color = Color3.fromRGB(30,30,30); t.healthBg.Filled = true
+                        t.healthBar.Visible = true; t.healthBar.Position = Vector2.new(hSp.X - w/2 - 5, hSp.Y + h*(1-r)); t.healthBar.Size = Vector2.new(3, h*r); t.healthBar.Color = Color3.fromRGB(255*(1-r), 255*r, 80); t.healthBar.Filled = true
                     else
-                        t.healthBg.Visible = false
-                        t.healthBar.Visible = false
+                        t.healthBg.Visible = false; t.healthBar.Visible = false
                     end
-
-                    -- Distance
-                    t.dist.Visible = CONFIG.ESP_Dist
-                    t.dist.Text = math.floor(dist) .. "m"
-                    t.dist.Position = Vector2.new(hSp.X, hSp.Y + h + 2)
-                    t.dist.Color = Color3.fromRGB(200,200,200)
-                    t.dist.Size = 11
-                    t.dist.Center = true
-                    t.dist.Outline = true
                 else
                     t.box.Visible = false; t.name.Visible = false; t.healthBg.Visible = false; t.healthBar.Visible = false; t.dist.Visible = false
                 end
             end
         end
     end
+
+    -- Clean up dead/left players
+    for p, t in pairs(State.ESPCache) do
+        if not active[p] then
+            t.box:Remove(); t.name:Remove(); t.healthBg:Remove(); t.healthBar:Remove(); t.dist:Remove()
+            State.ESPCache[p] = nil
+        end
+    end
 end))
 
 -- ============================================================
--- 4. HOTKEYS (ИСПРАВЛЕНО)
+-- 5. HOTKEYS (Fixed H to toggle ONLY menu)
 -- ============================================================
 Track(UserInputService.InputBegan:Connect(function(input, gp)
     if gp or UserInputService:GetFocusedTextBox() then return end
     
-    if input.KeyCode == Enum.KeyCode.H then
-        if mainGui then
-            mainGui.Enabled = not mainGui.Enabled -- Включает/выключает ВЕСЬ интерфейс
-        end
+    -- Listening for new keybind
+    if State.ListeningBind then
+        State.ListeningBind.Button.Text = input.KeyCode.Name
+        Keybinds[State.ListeningBind.Key] = input.KeyCode
+        State.ListeningBind = nil
+        return
     end
-    
-    if input.KeyCode == Enum.KeyCode.F then
-        CONFIG.FlyEnabled = not CONFIG.FlyEnabled
-        if not CONFIG.FlyEnabled then StopFly() end
-    end
-    if input.KeyCode == Enum.KeyCode.G then
+
+    if input.KeyCode == Keybinds.ToggleMenu then
+        if menuFrame then menuFrame.Visible = not menuFrame.Visible end
+    elseif input.KeyCode == Keybinds.Fly then
+        CONFIG.FlyEnabled = not CONFIG.FlyEnabled; if not CONFIG.FlyEnabled then StopFly() end
+    elseif input.KeyCode == Keybinds.Noclip then
         CONFIG.NoclipEnabled = not CONFIG.NoclipEnabled
-        if not CONFIG.NoclipEnabled then
-            for _, v in ipairs(LocalPlayer.Character:GetDescendants()) do
-                if v:IsA("BasePart") then v.CanCollide = true end
-            end
+        if not CONFIG.NoclipEnabled and LocalPlayer.Character then
+            for _, v in ipairs(LocalPlayer.Character:GetDescendants()) do if v:IsA("BasePart") then v.CanCollide = true end end
         end
-    end
-    if input.KeyCode == Enum.KeyCode.Delete then
-        State.Running = false
-        StopFly()
-        for _, c in ipairs(State.Connections) do c:Disconnect() end
-        for _, d in ipairs(State.Drawings) do d:Remove() end
-        if mainGui then mainGui:Destroy() end
+    elseif input.KeyCode == Keybinds.Fling then
+        CONFIG.FlingEnabled = not CONFIG.FlingEnabled
+    elseif input.KeyCode == Keybinds.Unload then
+        State.Running = false; StopFly(); if mainGui then mainGui:Destroy() end
     end
 end))
 
 -- ============================================================
--- 5. INIT
+-- 6. INIT
 -- ============================================================
 PlaySplash(function()
+    CreateCosmetics()
     BuildMainUI()
-    print("[Celestial] v3.0 Loaded. Press H to toggle UI.")
+    print("[Celestial] v4.0 Loaded.")
 end)
