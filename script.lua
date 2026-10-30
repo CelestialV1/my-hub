@@ -1,5 +1,5 @@
 -- ============================================================
--- CELESTIAL v5.1 (Invisible, Click TP, Player Search, Func Search)
+-- CELESTIAL v5.3 (Auto Wallhop, Piano Songs, Tool Giver)
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -9,6 +9,7 @@ local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 local Debris = game:GetService("Debris")
 local Stats = game:GetService("Stats")
+local VirtualUser = game:GetService("VirtualUser")
 local LocalPlayer = Players.LocalPlayer
 
 local CELESTIAL_ASSET = "rbxassetid://94872985442978"
@@ -22,6 +23,7 @@ local CONFIG = {
 
     FlyEnabled = false, FlySpeed = 60, LegitFlyEnabled = false,
     NoclipEnabled = false, SpeedEnabled = false, WalkSpeed = 50,
+    AutoWallhop = false,
 
     AimbotEnabled = true, AimFOV = 200, AimSmooth = 0.35, AimPart = "Head",
     AimAutoFire = false, LegitAimEnabled = false,
@@ -40,13 +42,14 @@ local Keybinds = {
     ToggleMenu = Enum.KeyCode.H, Fly = Enum.KeyCode.F,
     Noclip = Enum.KeyCode.G, Unload = Enum.KeyCode.Delete, Fling = Enum.KeyCode.V,
     Stand = Enum.KeyCode.Z, Invisible = Enum.KeyCode.I, ClickTP = Enum.KeyCode.B,
+    Wallhop = Enum.KeyCode.X,
 }
 
 local State = {
     Running = true, Connections = {}, Drawings = {},
     ESPCache = {}, ThemeObjects = {}, FontObjects = {}, SearchableWidgets = {},
     ListeningBind = nil, Cosmetics = {}, StandTarget = nil,
-    InvisibleBackup = {}, menuFrame = nil
+    InvisibleBackup = {}, menuFrame = nil, PlayingSong = false
 }
 
 local function Track(c) table.insert(State.Connections, c) end
@@ -69,95 +72,114 @@ local function RegisterFont(obj) table.insert(State.FontObjects, obj); return ob
 local function RegisterSearch(row, text, card, page) table.insert(State.SearchableWidgets, {row = row, text = text:lower(), card = card, page = page}) end
 
 -- ============================================================
--- 1. INVISIBLE LOGIC
+-- 1. SONGS DATA
 -- ============================================================
-local function SetInvisible(on)
-    local char = LocalPlayer.Character
-    if not char then return end
-    local hum = char:FindFirstChildOfClass("Humanoid")
+local Songs = {
+    ["Yara Yara"] = {
+        {note = "E", delay = 0.25}, {note = "G", delay = 0.25}, {note = "A", delay = 0.25}, {note = "C", delay = 0.4},
+        {note = "A", delay = 0.25}, {note = "G", delay = 0.25}, {note = "E", delay = 0.25}, {note = "D", delay = 0.4},
+        {note = "E", delay = 0.25}, {note = "G", delay = 0.25}, {note = "A", delay = 0.25}, {note = "C", delay = 0.4},
+        {note = "D", delay = 0.25}, {note = "C", delay = 0.25}, {note = "A", delay = 0.5}
+    },
+    ["Rush E"] = {
+        {note = "E", delay = 0.05}, {note = "E", delay = 0.05}, {note = "E", delay = 0.05}, {note = "E", delay = 0.05},
+        {note = "E", delay = 0.05}, {note = "E", delay = 0.05}, {note = "E", delay = 0.05}, {note = "E", delay = 0.05},
+        {note = "D#", delay = 0.1}, {note = "E", delay = 0.1}, {note = "B", delay = 0.1}, {note = "D", delay = 0.1},
+        {note = "C", delay = 0.1}, {note = "A", delay = 0.2}
+    },
+    ["Phonk (Sigma)"] = {
+        {note = "A", delay = 0.3}, {note = "C", delay = 0.3}, {note = "E", delay = 0.3}, {note = "A", delay = 0.3},
+        {note = "G", delay = 0.3}, {note = "E", delay = 0.3}, {note = "C", delay = 0.3}, {note = "A", delay = 0.3}
+    }
+}
+
+local function PlaySong(songName)
+    if State.PlayingSong then return end
+    State.PlayingSong = true
+    local song = Songs[songName]
+    if not song then return end
     
-    if on then
-        State.InvisibleBackup = {}
-        for _, v in ipairs(char:GetDescendants()) do
-            if v:IsA("BasePart") then
-                State.InvisibleBackup[v] = v.Transparency
-                v.Transparency = 1
-            elseif v:IsA("Decal") or v:IsA("Texture") then
-                State.InvisibleBackup[v] = v.Transparency
-                v.Transparency = 1
-            end
+    task.spawn(function()
+        for _, note in ipairs(song) do
+            if not State.PlayingSong then break end
+            -- Simulate key press for the piano
+            pcall(function()
+                local vim = game:GetService("VirtualInputManager")
+                vim:SendKeyEvent(true, Enum.KeyCode[note.note:upper()], false, game)
+                task.wait(0.02)
+                vim:SendKeyEvent(false, Enum.KeyCode[note.note:upper()], false, game)
+            end)
+            task.wait(note.delay)
         end
-        if hum then
-            State.InvisibleBackup["DisplayDistance"] = hum.DisplayDistanceType
-            State.InvisibleBackup["NameDist"] = hum.NameDisplayDistance
-            State.InvisibleBackup["HealthDist"] = hum.HealthDisplayDistance
-            hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-            hum.NameDisplayDistance = 0
-            hum.HealthDisplayDistance = 0
-        end
-    else
-        for obj, trans in pairs(State.InvisibleBackup) do
-            if type(obj) == "userdata" and obj.Parent then
-                pcall(function() obj.Transparency = trans end)
-            end
-        end
-        if hum then
-            hum.DisplayDistanceType = State.InvisibleBackup["DisplayDistance"] or Enum.HumanoidDisplayDistanceType.Viewer
-            hum.NameDisplayDistance = State.InvisibleBackup["NameDist"] or 100
-            hum.HealthDisplayDistance = State.InvisibleBackup["HealthDist"] or 100
-        end
-        State.InvisibleBackup = {}
-    end
-end
-
--- ============================================================
--- 2. SPLASH
--- ============================================================
-local splashGui = Create("ScreenGui", { Name = "CelestialSplash", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 1001, Parent = LocalPlayer:WaitForChild("PlayerGui") })
-local splashBg = Create("Frame", { Parent = splashGui, Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = CONFIG.Bg, BorderSizePixel = 0 })
-local ringFrame = Create("Frame", { Parent = splashBg, Size = UDim2.new(0, 300, 0, 300), Position = UDim2.new(0.5, -150, 0.5, -150), BackgroundTransparency = 1 })
-local particles = {}
-for i = 1, 36 do
-    local angle = (i / 36) * math.pi * 2
-    particles[i] = Create("Frame", { Parent = ringFrame, Size = UDim2.new(0, 4, 0, 4), Position = UDim2.new(0.5, math.cos(angle) * 140, 0.5, math.sin(angle) * 140), BackgroundColor3 = CONFIG.Accent, BorderSizePixel = 0 }, { CreateCorner(2) })
-end
-local splashImg = Create("ImageLabel", { Parent = splashBg, Size = UDim2.new(0, 150, 0, 150), Position = UDim2.new(0.5, -75, 0.5, -130), BackgroundTransparency = 1, Image = CELESTIAL_ASSET, ScaleType = Enum.ScaleType.Crop }, { CreateCorner(75) })
-Create("UIStroke", { Parent = splashImg, Color = CONFIG.Accent, Thickness = 2, Transparency = 0.5 })
-Create("TextLabel", { Parent = splashBg, Size = UDim2.new(0, 400, 0, 40), Position = UDim2.new(0.5, -200, 0.5, 40), BackgroundTransparency = 1, Text = "CELESTIAL", Font = Enum.Font.GothamBold, TextSize = 28, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Center })
-local barBg = Create("Frame", { Parent = splashBg, Size = UDim2.new(0, 300, 0, 6), Position = UDim2.new(0.5, -150, 0.5, 120), BackgroundColor3 = Color3.fromRGB(40, 40, 50), BorderSizePixel = 0 }, { CreateCorner(3) })
-local barFill = Create("Frame", { Parent = barBg, Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = CONFIG.Accent, BorderSizePixel = 0 }, { CreateCorner(3) })
-
-local function PlaySplash(callback)
-    local progress = 0; local rr = 0
-    local conn
-    conn = RunService.RenderStepped:Connect(function()
-        progress = math.min(progress + 0.006, 1)
-        barFill.Size = UDim2.new(progress, 0, 1, 0)
-        rr = rr + 0.02
-        for i, p in ipairs(particles) do
-            local angle = (i / 36) * math.pi * 2 + rr
-            p.BackgroundTransparency = 1 - (math.sin(angle) * 0.5 + 0.5)
-            p.Position = UDim2.new(0.5, math.cos(angle) * 140, 0.5, math.sin(angle) * 140)
-        end
-        if progress >= 1 then
-            conn:Disconnect(); task.wait(0.3)
-            TweenService:Create(splashBg, TweenInfo.new(0.5), { BackgroundTransparency = 1 }):Play()
-            task.wait(0.5); splashGui:Destroy(); callback()
-        end
+        State.PlayingSong = false
     end)
 end
 
 -- ============================================================
--- 3. TOP BAR
+-- 2. TOOL GIVER (Boombox)
 -- ============================================================
-local topBarGui = Create("ScreenGui", { Name = "CelestialTopBar", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 1000, Parent = LocalPlayer:WaitForChild("PlayerGui") })
-local topBar = Create("Frame", { Parent = topBarGui, Size = UDim2.new(0, 520, 0, 30), Position = UDim2.new(0.5, -260, 0, 10), BackgroundColor3 = CONFIG.Bg, BackgroundTransparency = 0.3 }, { CreateCorner(8) })
-RegisterTheme(Create("UIStroke", { Parent = topBar, Color = CONFIG.Accent, Thickness = 1, Transparency = 0.5 }), "stroke")
-local topText = RegisterFont(Create("TextLabel", { Parent = topBar, Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "Loading...", Font = CONFIG.GUIFont, TextSize = 12, TextColor3 = CONFIG.Text }))
+local function GiveBoombox()
+    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
+    if not backpack then return end
+    
+    local tool = Instance.new("Tool")
+    tool.Name = "Celestial Boombox"
+    tool.RequiresHandle = true
+    tool.CanBeDropped = false
+    
+    local handle = Instance.new("Part")
+    handle.Name = "Handle"
+    handle.Size = Vector3.new(2, 1, 1)
+    handle.Material = Enum.Material.Metal
+    handle.Color = CONFIG.Accent
+    handle.Parent = tool
+    
+    local sound = Instance.new("Sound")
+    sound.Name = "Music"
+    sound.SoundId = "rbxassetid://1837879082" -- Default phonk track
+    sound.Looped = true
+    sound.Volume = 2
+    sound.Parent = handle
+    
+    tool.Equipped:Connect(function()
+        sound:Play()
+    end)
+    tool.Unequipped:Connect(function()
+        sound:Stop()
+    end)
+    
+    tool.Parent = backpack
+end
 
 -- ============================================================
--- 4. CHAMS
+-- 3. INVISIBLE & CHAMS
 -- ============================================================
+local function ApplyInvisibility()
+    local char = LocalPlayer.Character
+    if not char then return end
+    for _, v in ipairs(char:GetDescendants()) do
+        if v:IsA("BasePart") then v.Transparency = 1; v.CanCollide = false
+        elseif v:IsA("Decal") or v:IsA("Texture") then v.Transparency = 1 end
+    end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+        hum.NameDisplayDistance = 0; hum.HealthDisplayDistance = 0
+    end
+end
+local function RestoreVisibility()
+    local char = LocalPlayer.Character
+    if not char then return end
+    for _, v in ipairs(char:GetDescendants()) do
+        if v:IsA("BasePart") then v.Transparency = 0; v.CanCollide = true
+        elseif v:IsA("Decal") or v:IsA("Texture") then v.Transparency = 0 end
+    end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
+        hum.NameDisplayDistance = 100; hum.HealthDisplayDistance = 100
+    end
+end
 local function ApplyChams(character)
     if not character then return end
     local hl = character:FindFirstChild("CelestialChams") or Instance.new("Highlight")
@@ -171,12 +193,11 @@ local function RemoveChams(character)
 end
 
 -- ============================================================
--- 5. COSMETICS
+-- 4. COSMETICS
 -- ============================================================
 local function CreateCosmetics()
     local char = LocalPlayer.Character
     if not char then return end
-
     local haloModel = Instance.new("Model", Workspace); haloModel.Name = "CelestialHalo"
     for i = 1, 16 do
         local ball = Instance.new("Part", haloModel)
@@ -242,6 +263,48 @@ local function UpdateCosmetics()
 end
 
 -- ============================================================
+-- 5. SPLASH & TOP BAR
+-- ============================================================
+local splashGui = Create("ScreenGui", { Name = "CelestialSplash", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 1001, Parent = LocalPlayer:WaitForChild("PlayerGui") })
+local splashBg = Create("Frame", { Parent = splashGui, Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = CONFIG.Bg, BorderSizePixel = 0 })
+local ringFrame = Create("Frame", { Parent = splashBg, Size = UDim2.new(0, 300, 0, 300), Position = UDim2.new(0.5, -150, 0.5, -150), BackgroundTransparency = 1 })
+local particles = {}
+for i = 1, 36 do
+    local angle = (i / 36) * math.pi * 2
+    particles[i] = Create("Frame", { Parent = ringFrame, Size = UDim2.new(0, 4, 0, 4), Position = UDim2.new(0.5, math.cos(angle) * 140, 0.5, math.sin(angle) * 140), BackgroundColor3 = CONFIG.Accent, BorderSizePixel = 0 }, { CreateCorner(2) })
+end
+local splashImg = Create("ImageLabel", { Parent = splashBg, Size = UDim2.new(0, 150, 0, 150), Position = UDim2.new(0.5, -75, 0.5, -130), BackgroundTransparency = 1, Image = CELESTIAL_ASSET, ScaleType = Enum.ScaleType.Crop }, { CreateCorner(75) })
+Create("UIStroke", { Parent = splashImg, Color = CONFIG.Accent, Thickness = 2, Transparency = 0.5 })
+Create("TextLabel", { Parent = splashBg, Size = UDim2.new(0, 400, 0, 40), Position = UDim2.new(0.5, -200, 0.5, 40), BackgroundTransparency = 1, Text = "CELESTIAL", Font = Enum.Font.GothamBold, TextSize = 28, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Center })
+local barBg = Create("Frame", { Parent = splashBg, Size = UDim2.new(0, 300, 0, 6), Position = UDim2.new(0.5, -150, 0.5, 120), BackgroundColor3 = Color3.fromRGB(40, 40, 50), BorderSizePixel = 0 }, { CreateCorner(3) })
+local barFill = Create("Frame", { Parent = barBg, Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = CONFIG.Accent, BorderSizePixel = 0 }, { CreateCorner(3) })
+
+local function PlaySplash(callback)
+    local progress = 0; local rr = 0
+    local conn
+    conn = RunService.RenderStepped:Connect(function()
+        progress = math.min(progress + 0.006, 1)
+        barFill.Size = UDim2.new(progress, 0, 1, 0)
+        rr = rr + 0.02
+        for i, p in ipairs(particles) do
+            local angle = (i / 36) * math.pi * 2 + rr
+            p.BackgroundTransparency = 1 - (math.sin(angle) * 0.5 + 0.5)
+            p.Position = UDim2.new(0.5, math.cos(angle) * 140, 0.5, math.sin(angle) * 140)
+        end
+        if progress >= 1 then
+            conn:Disconnect(); task.wait(0.3)
+            TweenService:Create(splashBg, TweenInfo.new(0.5), { BackgroundTransparency = 1 }):Play()
+            task.wait(0.5); splashGui:Destroy(); callback()
+        end
+    end)
+end
+
+local topBarGui = Create("ScreenGui", { Name = "CelestialTopBar", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 1000, Parent = LocalPlayer:WaitForChild("PlayerGui") })
+local topBar = Create("Frame", { Parent = topBarGui, Size = UDim2.new(0, 520, 0, 30), Position = UDim2.new(0.5, -260, 0, 10), BackgroundColor3 = CONFIG.Bg, BackgroundTransparency = 0.3 }, { CreateCorner(8) })
+RegisterTheme(Create("UIStroke", { Parent = topBar, Color = CONFIG.Accent, Thickness = 1, Transparency = 0.5 }), "stroke")
+local topText = RegisterFont(Create("TextLabel", { Parent = topBar, Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "Loading...", Font = CONFIG.GUIFont, TextSize = 12, TextColor3 = CONFIG.Text }))
+
+-- ============================================================
 -- 6. MAIN UI
 -- ============================================================
 local mainGui
@@ -255,28 +318,23 @@ local function BuildMainUI()
     local header = Create("Frame", { Parent = menuFrame, Size = UDim2.new(1, 0, 0, 50), BackgroundTransparency = 1 })
     Create("ImageLabel", { Parent = header, Size = UDim2.new(0, 28, 0, 28), Position = UDim2.new(0, 16, 0.5, -14), BackgroundTransparency = 1, Image = CELESTIAL_ASSET, ScaleType = Enum.ScaleType.Crop }, { CreateCorner(14) })
     RegisterFont(Create("TextLabel", { Parent = header, Size = UDim2.new(0, 200, 0, 20), Position = UDim2.new(0, 54, 0, 10), BackgroundTransparency = 1, Text = "Celestial", Font = CONFIG.GUIFont, TextSize = 16, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left }))
-    local subLbl = RegisterFont(Create("TextLabel", { Parent = header, Size = UDim2.new(0, 250, 0, 14), Position = UDim2.new(0, 54, 0, 28), BackgroundTransparency = 1, Text = "v5.1 | Invisible + Click TP", Font = CONFIG.GUIFont, TextSize = 11, TextColor3 = CONFIG.Accent, TextXAlignment = Enum.TextXAlignment.Left }))
+    local subLbl = RegisterFont(Create("TextLabel", { Parent = header, Size = UDim2.new(0, 250, 0, 14), Position = UDim2.new(0, 54, 0, 28), BackgroundTransparency = 1, Text = "v5.3 | Music & Wallhop", Font = CONFIG.GUIFont, TextSize = 11, TextColor3 = CONFIG.Accent, TextXAlignment = Enum.TextXAlignment.Left }))
     RegisterTheme(subLbl, "text")
     Create("TextButton", { Parent = header, Size = UDim2.new(0, 24, 0, 24), Position = UDim2.new(1, -36, 0.5, -12), BackgroundTransparency = 1, Text = "×", Font = Enum.Font.GothamBold, TextSize = 20, TextColor3 = CONFIG.TextDark }).MouseButton1Click:Connect(function() menuFrame.Visible = false end)
 
-    -- SEARCH BAR
     local searchBar = Create("Frame", { Parent = menuFrame, Size = UDim2.new(1, -160, 0, 30), Position = UDim2.new(0, 150, 0, 54), BackgroundColor3 = CONFIG.CardBg, BackgroundTransparency = 0.3, BorderSizePixel = 0 }, { CreateCorner(6) })
     RegisterTheme(Create("UIStroke", { Parent = searchBar, Color = CONFIG.Accent, Thickness = 1, Transparency = 0.8 }), "stroke")
-    local searchIcon = Create("TextLabel", { Parent = searchBar, Size = UDim2.new(0, 24, 1, 0), Position = UDim2.new(0, 4, 0, 0), BackgroundTransparency = 1, Text = "🔍", Font = Enum.Font.Gotham, TextSize = 14, TextColor3 = CONFIG.TextDark })
+    Create("TextLabel", { Parent = searchBar, Size = UDim2.new(0, 24, 1, 0), Position = UDim2.new(0, 4, 0, 0), BackgroundTransparency = 1, Text = "🔍", Font = Enum.Font.Gotham, TextSize = 14, TextColor3 = CONFIG.TextDark })
     local searchBox = Create("TextBox", { Parent = searchBar, Size = UDim2.new(1, -30, 1, 0), Position = UDim2.new(0, 26, 0, 0), BackgroundTransparency = 1, Text = "", PlaceholderText = "Search functions...", Font = CONFIG.GUIFont, TextSize = 12, TextColor3 = CONFIG.Text, PlaceholderColor3 = CONFIG.TextDark, ClearTextOnFocus = false, TextXAlignment = Enum.TextXAlignment.Left })
 
     searchBox:GetPropertyChangedSignal("Text"):Connect(function()
         local query = searchBox.Text:lower()
         if query == "" then
-            for _, w in ipairs(State.SearchableWidgets) do
-                if w.row and w.row.Parent then w.row.Visible = true end
-            end
+            for _, w in ipairs(State.SearchableWidgets) do if w.row and w.row.Parent then w.row.Visible = true end end
             return
         end
         for _, w in ipairs(State.SearchableWidgets) do
-            if w.row and w.row.Parent then
-                w.row.Visible = w.text:find(query) ~= nil
-            end
+            if w.row and w.row.Parent then w.row.Visible = w.text:find(query) ~= nil end
         end
     end)
 
@@ -302,7 +360,6 @@ local function BuildMainUI()
         return page
     end
 
-    local currentPage = nil
     local function CreateCard(parent, titleText)
         local card = Create("Frame", { Parent = parent, Size = UDim2.new(1, -10, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = CONFIG.CardBg, BackgroundTransparency = 0.1 }, { CreateCorner(8) })
         Create("UIListLayout", { Parent = card, Padding = UDim.new(0, 8) })
@@ -362,7 +419,8 @@ local function BuildMainUI()
     local visPage = CreateTab("Visuals", 3)
     local trollPage = CreateTab("Troll", 4)
     local movePage = CreateTab("Movement", 5)
-    local settingsPage = CreateTab("Settings", 6)
+    local musicPage = CreateTab("Music & Tools", 6)
+    local settingsPage = CreateTab("Settings", 7)
 
     -- HOME
     local infoCard = CreateCard(homePage, "Player Profile")
@@ -395,100 +453,34 @@ local function BuildMainUI()
     -- TROLL
     local trollCard = CreateCard(trollPage, "Fling & Stand")
     CreateToggle(trollCard, "Auto Fling Nearby", CONFIG.FlingEnabled, function(v) CONFIG.FlingEnabled = v end)
-    CreateDropdown(trollCard, "Fling Mode", {"Assembly", "BodyVel", "CFrame"}, "Assembly", function(v) CONFIG.FlingMode = v end)
     CreateToggle(trollCard, "Stand (Follow Player)", CONFIG.StandEnabled, function(v) CONFIG.StandEnabled = v end)
     CreateToggle(trollCard, "Invisible (No Name)", CONFIG.InvisibleEnabled, function(v)
         CONFIG.InvisibleEnabled = v
-        SetInvisible(v)
+        if v then ApplyInvisibility() else RestoreVisibility() end
     end)
     CreateToggle(trollCard, "Click TP", CONFIG.ClickTPEnabled, function(v) CONFIG.ClickTPEnabled = v end)
 
-    local flingAllBtn = Create("TextButton", { Parent = trollCard, Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Color3.fromRGB(200,50,50), Text = "Fling Everyone", Font = CONFIG.GUIFont, TextSize = 12, TextColor3 = CONFIG.Text }, { CreateCorner(6) })
-    flingAllBtn.MouseButton1Click:Connect(function()
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and p.Character then
-                local hrp = p.Character:FindFirstChild("HumanoidRootPart")
-                if hrp then
-                    if CONFIG.FlingMode == "Assembly" then
-                        hrp.AssemblyLinearVelocity = Vector3.new(1e5, 1e5, 1e5)
-                        hrp.AssemblyAngularVelocity = Vector3.new(1e5, 1e5, 1e5)
-                    elseif CONFIG.FlingMode == "BodyVel" then
-                        local bv = Instance.new("BodyVelocity", hrp); bv.Velocity = Vector3.new(1e5, 1e5, 1e5); bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge); Debris:AddItem(bv, 0.5)
-                    elseif CONFIG.FlingMode == "CFrame" then
-                        hrp.CFrame = hrp.CFrame * CFrame.new(0, 1e3, 0)
-                    end
-                end
-            end
-        end
-    end)
-    RegisterSearch(flingAllBtn, "Fling Everyone", trollCard, nil)
-
-    -- PLAYER SEARCH
-    local playerCard = CreateCard(trollPage, "Find Player")
-    local playerSearchFrame = Create("Frame", { Parent = playerCard, Size = UDim2.new(1, 0, 0, 26), BackgroundColor3 = CONFIG.Bg, BackgroundTransparency = 0.3 }, { CreateCorner(5) })
-    local playerSearchBox = Create("TextBox", { Parent = playerSearchFrame, Size = UDim2.new(1, -10, 1, 0), Position = UDim2.new(0, 5, 0, 0), BackgroundTransparency = 1, Text = "", PlaceholderText = "Search player...", Font = CONFIG.GUIFont, TextSize = 12, TextColor3 = CONFIG.Text, PlaceholderColor3 = CONFIG.TextDark, ClearTextOnFocus = false, TextXAlignment = Enum.TextXAlignment.Left })
-    local playerList = Create("ScrollingFrame", { Parent = playerCard, Size = UDim2.new(1, 0, 0, 150), BackgroundTransparency = 1, ScrollBarThickness = 2, ScrollBarImageColor3 = CONFIG.Accent, CanvasSize = UDim2.new(0,0,0,0), AutomaticCanvasSize = Enum.AutomaticSize.Y })
-    Create("UIListLayout", { Parent = playerList, Padding = UDim.new(0, 4) })
-
-    local function refreshPlayerList(query)
-        query = (query or ""):lower()
-        for _, child in ipairs(playerList:GetChildren()) do
-            if child:IsA("TextButton") then child:Destroy() end
-        end
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and p.Name:lower():find(query, 1, true) then
-                local btn = Create("TextButton", { Parent = playerList, Size = UDim2.new(1, 0, 0, 24), BackgroundColor3 = CONFIG.Bg, BackgroundTransparency = 0.3, Text = "  " .. p.Name, Font = CONFIG.GUIFont, TextSize = 11, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left }, { CreateCorner(4) })
-                btn.MouseButton1Click:Connect(function()
-                    if p.Character then
-                        State.StandTarget = p.Character
-                        CONFIG.StandEnabled = true
-                    end
-                end)
-            end
-        end
+    -- MUSIC & TOOLS
+    local musicCard = CreateCard(musicPage, "Piano Songs (Auto Play)")
+    for songName, _ in pairs(Songs) do
+        local btn = Create("TextButton", { Parent = musicCard, Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = CONFIG.Accent, Text = "Play: " .. songName, Font = CONFIG.GUIFont, TextSize = 12, TextColor3 = CONFIG.Text }, { CreateCorner(6) })
+        btn.MouseButton1Click:Connect(function() PlaySong(songName) end)
+        RegisterSearch(btn, songName, musicCard, nil)
     end
-    refreshPlayerList("")
-    playerSearchBox:GetPropertyChangedSignal("Text"):Connect(function()
-        refreshPlayerList(playerSearchBox.Text)
-    end)
-    Track(Players.PlayerAdded:Connect(function() refreshPlayerList(playerSearchBox.Text) end))
-    Track(Players.PlayerRemoving:Connect(function() task.wait(0.1); refreshPlayerList(playerSearchBox.Text) end))
+    local stopBtn = Create("TextButton", { Parent = musicCard, Size = UDim2.new(1, 0, 0, 25), BackgroundColor3 = Color3.fromRGB(200, 50, 50), Text = "Stop Playing", Font = CONFIG.GUIFont, TextSize = 11, TextColor3 = CONFIG.Text }, { CreateCorner(6) })
+    stopBtn.MouseButton1Click:Connect(function() State.PlayingSong = false end)
+    RegisterSearch(stopBtn, "Stop Playing", musicCard, nil)
 
-    -- EMOTES
-    local emotesCard = CreateCard(trollPage, "Troll Emotes")
-    local function AddEmoteBtn(text, animId)
-        local btn = Create("TextButton", { Parent = emotesCard, Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = CONFIG.CardBg, Text = text .. " Nearest Player", Font = CONFIG.GUIFont, TextSize = 12, TextColor3 = CONFIG.Text }, { CreateCorner(6) })
-        btn.MouseButton1Click:Connect(function()
-            local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-            local closest, minD = nil, math.huge
-            if myRoot then
-                for _, p in ipairs(Players:GetPlayers()) do
-                    if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                        local d = (p.Character.HumanoidRootPart.Position - myRoot.Position).Magnitude
-                        if d < minD then minD = d; closest = p.Character end
-                    end
-                end
-            end
-            if closest and closest:FindFirstChildOfClass("Humanoid") then
-                local hum = closest:FindFirstChildOfClass("Humanoid")
-                local animator = hum:FindFirstChildOfClass("Animator") or hum
-                local anim = Instance.new("Animation")
-                anim.AnimationId = "rbxassetid://" .. animId
-                animator:LoadAnimation(anim):Play()
-            end
-        end)
-        RegisterSearch(btn, text, emotesCard, nil)
-    end
-    AddEmoteBtn("Bang", "5269855227")
-    AddEmoteBtn("Dance", "507771019")
-    AddEmoteBtn("Laugh", "507770818")
+    local toolsCard = CreateCard(musicPage, "Tool Giver")
+    local boomboxBtn = Create("TextButton", { Parent = toolsCard, Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = CONFIG.CardBg, Text = "Get Boombox", Font = CONFIG.GUIFont, TextSize = 12, TextColor3 = CONFIG.Text }, { CreateCorner(6) })
+    boomboxBtn.MouseButton1Click:Connect(function() GiveBoombox() end)
+    RegisterSearch(boomboxBtn, "Get Boombox", toolsCard, nil)
 
     -- MOVEMENT
     local moveCard = CreateCard(movePage, "Movement")
     CreateToggle(moveCard, "Fly (Fast)", CONFIG.FlyEnabled, function(v) CONFIG.FlyEnabled = v; if not v then StopFly() end end)
-    CreateToggle(moveCard, "Legit Fly (Safe)", CONFIG.LegitFlyEnabled, function(v) CONFIG.LegitFlyEnabled = v; if not v then StopLegitFly() end end)
-    CreateSlider(moveCard, "Fly Speed", 20, 200, CONFIG.FlySpeed, function(v) CONFIG.FlySpeed = v end)
     CreateToggle(moveCard, "Noclip", CONFIG.NoclipEnabled, function(v) CONFIG.NoclipEnabled = v end)
+    CreateToggle(moveCard, "Auto Wallhop (Hold Space)", CONFIG.AutoWallhop, function(v) CONFIG.AutoWallhop = v end)
     CreateToggle(moveCard, "Speed Hack", CONFIG.SpeedEnabled, function(v) CONFIG.SpeedEnabled = v end)
     CreateSlider(moveCard, "WalkSpeed", 16, 150, CONFIG.WalkSpeed, function(v) CONFIG.WalkSpeed = v end)
 
@@ -537,7 +529,7 @@ local function BuildMainUI()
 end
 
 -- ============================================================
--- 7. MOVEMENT LOGIC
+-- 7. MOVEMENT & WALLHOP LOGIC
 -- ============================================================
 function StopFly()
     local char = LocalPlayer.Character
@@ -600,6 +592,22 @@ Track(RunService.Stepped:Connect(function(_, dt)
         local hum = char:FindFirstChildOfClass("Humanoid")
         if hum and CONFIG.SpeedEnabled then hum.WalkSpeed = CONFIG.WalkSpeed elseif hum then hum.WalkSpeed = 16 end
         if CONFIG.NoclipEnabled then for _, v in ipairs(char:GetDescendants()) do if v:IsA("BasePart") then v.CanCollide = false end end end
+        if CONFIG.InvisibleEnabled then ApplyInvisibility() end
+        
+        -- Auto Wallhop
+        if CONFIG.AutoWallhop and UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local params = RaycastParams.new()
+                params.FilterDescendantsInstances = {char}
+                params.FilterType = Enum.RaycastFilterType.Exclude
+                local ray = Workspace:Raycast(hrp.Position, hrp.CFrame.LookVector * 3, params)
+                if ray then
+                    hum:ChangeState(Enum.HumanoidStateType.Jumping)
+                    hrp.AssemblyLinearVelocity = hrp.AssemblyLinearVelocity + Vector3.new(0, 60, 0)
+                end
+            end
+        end
     end
 
     if CONFIG.StandEnabled and State.StandTarget and State.StandTarget.Parent then
@@ -656,14 +664,12 @@ Track(RunService.Stepped:Connect(function(_, dt)
                 if p ~= LocalPlayer and p.Character then
                     local hrp = p.Character:FindFirstChild("HumanoidRootPart")
                     if hrp and (hrp.Position - myRoot.Position).Magnitude < 25 then
-                        if CONFIG.FlingMode == "Assembly" then
+                        pcall(function()
+                            local hum = p.Character:FindFirstChildOfClass("Humanoid")
+                            if hum then hum:ChangeState(Enum.HumanoidStateType.Physics) end
                             hrp.AssemblyLinearVelocity = Vector3.new(1e5, 1e5, 1e5)
                             hrp.AssemblyAngularVelocity = Vector3.new(1e5, 1e5, 1e5)
-                        elseif CONFIG.FlingMode == "BodyVel" then
-                            local bv = Instance.new("BodyVelocity", hrp); bv.Velocity = Vector3.new(1e5, 1e5, 1e5); bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge); Debris:AddItem(bv, 0.5)
-                        elseif CONFIG.FlingMode == "CFrame" then
-                            hrp.CFrame = hrp.CFrame * CFrame.new(0, 1e3, 0)
-                        end
+                        end)
                     end
                 end
             end
@@ -729,7 +735,6 @@ Track(RunService.RenderStepped:Connect(function()
     if frameTick % 3 == 0 then
         UpdateCosmetics()
         if CONFIG.Chams_Self then ApplyChams(LocalPlayer.Character) else RemoveChams(LocalPlayer.Character) end
-        if CONFIG.InvisibleEnabled then SetInvisible(true) end
     end
 end))
 
@@ -791,10 +796,11 @@ end))
 -- ============================================================
 function UNLOAD()
     State.Running = false
+    State.PlayingSong = false
     if mainGui then mainGui:Destroy() end
     if topBarGui then topBarGui:Destroy() end
     StopFly(); StopLegitFly()
-    if CONFIG.InvisibleEnabled then SetInvisible(false) end
+    RestoreVisibility()
     for _, d in ipairs(State.Drawings) do pcall(function() d:Remove() end) end
     for _, c in ipairs(State.Connections) do pcall(function() c:Disconnect() end) end
     for _, p in ipairs(Players:GetPlayers()) do
@@ -816,13 +822,15 @@ Track(UserInputService.InputBegan:Connect(function(input, gp)
         if not CONFIG.NoclipEnabled and LocalPlayer.Character then
             for _, v in ipairs(LocalPlayer.Character:GetDescendants()) do if v:IsA("BasePart") then v.CanCollide = true end end
         end
+    elseif input.KeyCode == Keybinds.Wallhop then
+        CONFIG.AutoWallhop = not CONFIG.AutoWallhop
     elseif input.KeyCode == Keybinds.Fling then
         CONFIG.FlingEnabled = not CONFIG.FlingEnabled
     elseif input.KeyCode == Keybinds.Stand then
         CONFIG.StandEnabled = not CONFIG.StandEnabled
     elseif input.KeyCode == Keybinds.Invisible then
         CONFIG.InvisibleEnabled = not CONFIG.InvisibleEnabled
-        SetInvisible(CONFIG.InvisibleEnabled)
+        if CONFIG.InvisibleEnabled then ApplyInvisibility() else RestoreVisibility() end
     elseif input.KeyCode == Keybinds.ClickTP then
         CONFIG.ClickTPEnabled = not CONFIG.ClickTPEnabled
     elseif input.KeyCode == Keybinds.Unload then
@@ -833,5 +841,5 @@ end))
 PlaySplash(function()
     pcall(CreateCosmetics)
     pcall(BuildMainUI)
-    print("[Celestial] v5.1 Loaded.")
+    print("[Celestial] v5.3 Loaded.")
 end)
