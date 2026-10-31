@@ -1,5 +1,5 @@
 -- ============================================================
--- CELESTIAL v7.5 — FIXED BY WORM SHADOW
+-- CELESTIAL v7.6 — FIXED MOVEMENT & SILENT AIM
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -13,12 +13,8 @@ local Lighting = game:GetService("Lighting")
 local VIM = game:GetService("VirtualInputManager")
 local LocalPlayer = Players.LocalPlayer
 
--- Безопасное получение PlayerModule
-local PlayerModule = require(LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule"))
-local Controls = PlayerModule:GetControls()
-
 local CELESTIAL_ASSET = "rbxassetid://94872985442978"
-local VERSION = "7.5"
+local VERSION = "7.6"
 
 -- ============================================================
 -- CONFIG
@@ -34,7 +30,7 @@ local CONFIG = {
 
     AimbotEnabled = false, AimbotKey = Enum.KeyCode.E,
     AimbotFOV = 200, AimbotSmooth = 0.35, AimbotPart = "Head",
-    AimbotPredict = 0.15, AimbotSilent = false,
+    AimbotPredict = 0.15,
     AimbotAutoFire = false, AimbotVisible = false,
     KillAuraEnabled = false, KillAuraRange = 25, KillAuraDelay = 0.1,
     TriggerbotEnabled = false,
@@ -359,16 +355,13 @@ local function StopFly()
             if c.Name == "Celestial_FlyBV" or c.Name == "Celestial_FlyBG" then c:Destroy() end
         end
     end
-    Controls:Enable() -- Fix: safe enable
 end
 
--- Fling — Fixed physics breakage
 local function ForceFling(char)
     if not char then return end
     local hrp = char:FindFirstChild("HumanoidRootPart")
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hrp or not hum then return end
-    
     pcall(function()
         hum:ChangeState(Enum.HumanoidStateType.Physics)
         local bv = Instance.new("BodyVelocity", hrp)
@@ -382,7 +375,6 @@ local function ForceFling(char)
     end)
 end
 
--- Invisible — Fixed ghost visual
 local function ApplyGhost()
     local char = LocalPlayer.Character
     if not char then return end
@@ -390,7 +382,9 @@ local function ApplyGhost()
         if v:IsA("BasePart") then
             v.Transparency = 1
             v.LocalTransparencyModifier = 1
-            v.CanCollide = false
+            if v.Name ~= "HumanoidRootPart" then
+                v.CanCollide = false
+            end
         elseif v:IsA("Decal") or v:IsA("Texture") then
             v.Transparency = 1
         end
@@ -410,14 +404,16 @@ local function RestoreVis()
         if v:IsA("BasePart") then
             v.Transparency = 0
             v.LocalTransparencyModifier = 0
-            v.CanCollide = true
+            if v.Name == "HumanoidRootPart" or v.Name == "Head" or v.Name == "UpperTorso" or v.Name == "LowerTorso" or v.Name:find("Leg") or v.Name:find("Arm") then
+                v.CanCollide = true
+            end
         elseif v:IsA("Decal") or v:IsA("Texture") then
             v.Transparency = 0
         end
     end
     local hum = char:FindFirstChildOfClass("Humanoid")
     if hum then
-        hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer -- Fix: typo fixed
+        hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
         hum.NameDisplayDistance = 100
         hum.HealthDisplayDistance = 100
     end
@@ -839,7 +835,6 @@ local function BuildUI()
     CreateSlider(aimCard, "Smoothness", 5, 100, math.floor(CONFIG.AimbotSmooth * 100), "%", function(v) CONFIG.AimbotSmooth = v/100 end, 3)
     CreateSlider(aimCard, "Prediction", 0, 50, math.floor(CONFIG.AimbotPredict * 100), "ms", function(v) CONFIG.AimbotPredict = v/100 end, 4)
     CreateDropdown(aimCard, "Part", {"Head","Torso","HumanoidRootPart"}, CONFIG.AimbotPart, function(v) CONFIG.AimbotPart = v end, 5)
-    CreateToggle(aimCard, "Silent Aim", CONFIG.AimbotSilent, function(v) CONFIG.AimbotSilent = v end, 6)
     CreateToggle(aimCard, "Auto Fire", CONFIG.AimbotAutoFire, function(v) CONFIG.AimbotAutoFire = v end, 7)
     CreateToggle(aimCard, "Visible Check", CONFIG.AimbotVisible, function(v) CONFIG.AimbotVisible = v end, 8)
 
@@ -1128,33 +1123,6 @@ local function GetBestTarget()
     return best
 end
 
--- Silent aim hook (Fixed safe check)
-if typeof(hookmetamethod) == "function" and typeof(getnamecallmethod) == "function" then
-    local inSilent = false
-    local oldNC = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-        if not State.Running then return oldNC(self, ...) end
-        local m = getnamecallmethod()
-        if CONFIG.AimbotSilent and not inSilent and m == "Raycast" and self == Workspace then
-            local origin, dir, params = ...
-            if typeof(origin) == "Vector3" and typeof(dir) == "Vector3" then
-                local myChar = LocalPlayer.Character
-                local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
-                if myRoot and (origin - myRoot.Position).Magnitude < 25 then
-                    local t = GetBestTarget()
-                    if t then
-                        inSilent = true
-                        local newDir = (t.Position - origin).Unit * dir.Magnitude
-                        local r = oldNC(self, origin, newDir, params)
-                        inSilent = false
-                        return r
-                    end
-                end
-            end
-        end
-        return oldNC(self, ...)
-    end))
-end
-
 -- ============================================================
 -- MAIN LOOPS
 -- ============================================================
@@ -1215,7 +1183,6 @@ Track(RunService.Stepped:Connect(function(_, dt)
             local g = Instance.new("BodyGyro", hrp)
             g.Name = "Celestial_FlyBG"
             g.MaxTorque = Vector3.new(1e5,1e5,1e5); g.P = 3000
-            Controls:Disable() -- Fix: safe disable
         else
             local move = Vector3.zero
             if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += cam.CFrame.LookVector end
@@ -1610,7 +1577,7 @@ end))
 task.spawn(function()
     pcall(BuildCosmetics)
     pcall(BuildUI)
-    print("[Celestial] v7.5 loaded successfully.")
+    print("[Celestial] v7.6 loaded successfully.")
     task.wait(0.5)
     Notify("✦ Celestial v" .. VERSION .. " loaded", 3)
 end)
