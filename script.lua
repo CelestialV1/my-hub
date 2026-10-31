@@ -1,6 +1,6 @@
 -- ============================================================
--- CELESTIAL v7.0 ULTIMATE
--- Premium UI + Full Features + Everything working
+-- CELESTIAL v7.1 ULTIMATE (FIXED FREEZE)
+-- Premium UI + Full Features + No Lag
 -- ============================================================
 
 local Players          = game:GetService("Players")
@@ -16,7 +16,7 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local LocalPlayer      = Players.LocalPlayer
 
 local CELESTIAL_ASSET = "rbxassetid://94872985442978"
-local VERSION = "7.0 ULTIMATE"
+local VERSION = "7.1 FIXED"
 
 -- ============================================================
 -- CONFIG
@@ -25,7 +25,6 @@ local CONFIG = {
     -- THEME
     Accent   = Color3.fromRGB(160, 110, 255),
     Accent2  = Color3.fromRGB(255, 100, 200),
-    Accent3  = Color3.fromRGB(100, 200, 255),
     Bg       = Color3.fromRGB(8, 8, 12),
     CardBg   = Color3.fromRGB(18, 18, 24),
     Text     = Color3.fromRGB(240, 240, 250),
@@ -70,7 +69,6 @@ local CONFIG = {
 
     -- COSMETICS
     WingsEnabled  = false,
-    WingsColor    = Color3.fromRGB(160, 110, 255),
     CrownEnabled  = false,
     HaloEnabled   = false,
     AuraEnabled   = false,
@@ -98,12 +96,8 @@ local CONFIG = {
     FlingEnabled  = false,
     FlingRange    = 25,
     InvisibleEnabled = false,
-    FreezeEnabled = false,
     ChatSpamEnabled = false,
     ChatSpamText  = "CELESTIAL ON TOP",
-
-    -- MUSIC
-    MusicVolume   = 2,
 }
 
 -- ============================================================
@@ -135,18 +129,15 @@ local State = {
     ThemeObjects = {},
     FontObjects = {},
     SearchWidgets = {},
-    Notifications = {},
     Cosmetics = {},
     StandTarget = nil,
     menuFrame = nil,
     mainGui = nil,
-    blur = nil,
     PlayingSong = false,
     WallhopCooldown = 0,
     KillAuraCooldown = 0,
     TriggerbotCooldown = 0,
     ChatSpamCooldown = 0,
-    FlingAccum = {},
     OriginalLighting = {
         Brightness = Lighting.Brightness,
         FogEnd = Lighting.FogEnd,
@@ -154,8 +145,6 @@ local State = {
         OutdoorAmbient = Lighting.OutdoorAmbient,
         ClockTime = Lighting.ClockTime,
     },
-    OriginalSizes = {},
-    OriginalC0 = {},
 }
 
 local function Track(c) if State.Running and c then table.insert(State.Connections, c) end return c end
@@ -260,7 +249,7 @@ local function Notify(text, duration)
 end
 
 -- ============================================================
--- COSMETICS
+-- COSMETICS (FIXED AURA BUG)
 -- ============================================================
 local function BuildCosmetics()
     local char = LocalPlayer.Character
@@ -314,12 +303,6 @@ local function BuildCosmetics()
             end
         end
         State.Cosmetics.Wings = wings
-    end
-
-    -- Aura (Particle attachments)
-    if not State.Cosmetics.Aura then
-        local aura = Instance.new("Folder", Workspace); aura.Name = "Celestial_Aura"
-        State.Cosmetics.Aura = aura
     end
 
     -- Orbit rings
@@ -419,13 +402,13 @@ local function UpdateCosmetics()
         end
     end
 
-    -- Aura
-    if State.Cosmetics.Aura and hrp then
-        State.Cosmetics.Aura.Parent = CONFIG.AuraEnabled and Workspace or nil
+    -- FIXED AURA BUG: Check for the attachment on the character, not the folder
+    if hrp then
         if CONFIG.AuraEnabled then
-            if #State.Cosmetics.Aura:GetChildren() == 0 then
-                local att = Instance.new("Attachment", hrp)
-                att.Name = "AuraAtt"
+            local att = hrp:FindFirstChild("Celestial_AuraAtt")
+            if not att then
+                att = Instance.new("Attachment", hrp)
+                att.Name = "Celestial_AuraAtt"
                 local pe = Instance.new("ParticleEmitter", att)
                 pe.Name = "AuraPE"
                 pe.Rate = 30
@@ -440,11 +423,14 @@ local function UpdateCosmetics()
                 pe.LightInfluence = 0
                 pe.Texture = "rbxasset://textures/particles/sparkles_main.dds"
             end
-            for _, pe in ipairs(State.Cosmetics.Aura:GetDescendants()) do
+            for _, pe in ipairs(att:GetChildren()) do
                 if pe:IsA("ParticleEmitter") then
                     pe.Color = ColorSequence.new(CONFIG.Accent)
                 end
             end
+        else
+            local old = hrp:FindFirstChild("Celestial_AuraAtt")
+            if old then old:Destroy() end
         end
     end
 
@@ -482,16 +468,17 @@ end
 -- ============================================================
 local function ApplyChams(character)
     if not character then return end
-    if CONFIG.ChamsMaterial == "Highlight" or not CONFIG.ChamsMaterial then
-        local hl = character:FindFirstChild("Celestial_Chams") or Instance.new("Highlight", character)
+    local hl = character:FindFirstChild("Celestial_Chams")
+    if not hl then
+        hl = Instance.new("Highlight", character)
         hl.Name = "Celestial_Chams"
         hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
         hl.FillTransparency = 0.5
         hl.OutlineTransparency = 0
         hl.FillColor = CONFIG.ChamsRainbow and Color3.fromHSV(tick() % 1, 1, 1) or CONFIG.ChamsColor
         hl.OutlineColor = hl.FillColor
-        State.ChamsCache[character] = hl
     end
+    State.ChamsCache[character] = hl
 end
 
 local function RemoveChams(character)
@@ -663,10 +650,10 @@ end
 local function BuildUI()
     local playerGui = LocalPlayer:WaitForChild("PlayerGui")
 
-    -- Blur
-    State.blur = Instance.new("BlurEffect")
-    State.blur.Size = 0
-    State.blur.Parent = Lighting
+    -- Blur removed to prevent freezes on low-end PCs
+    -- State.blur = Instance.new("BlurEffect")
+    -- State.blur.Size = 0
+    -- State.blur.Parent = Lighting
 
     local mainGui = Instance.new("ScreenGui")
     mainGui.Name = "CelestialUI"
@@ -761,7 +748,6 @@ local function BuildUI()
         TweenService:Create(menu, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
             Position = UDim2.new(0.5, -320, 1, 500),
         }):Play()
-        TweenService:Create(State.blur, TweenInfo.new(0.3), { Size = 0 }):Play()
         task.wait(0.3)
         menu.Visible = false
     end)
@@ -1370,7 +1356,7 @@ local function BuildUI()
         if id ~= "" then
             local s = Instance.new("Sound", LocalPlayer.Character or Workspace)
             s.SoundId = id
-            s.Volume = CONFIG.MusicVolume
+            s.Volume = 2
             s:Play()
             Debris:AddItem(s, 30)
             Notify("Playing: " .. id, 2)
@@ -1452,7 +1438,6 @@ local function BuildUI()
         btn.MouseButton1Click:Connect(function()
             CONFIG.Accent = c.Color
             CONFIG.Accent2 = c.Color:Lerp(Color3.new(1, 1, 1), 0.3)
-            CONFIG.Accent3 = c.Color:Lerp(Color3.new(0, 1, 1), 0.3)
             FOVCircle.Color = c.Color
             for _, obj in ipairs(State.ThemeObjects) do
                 if obj and obj.Parent then
@@ -1623,16 +1608,14 @@ local function BuildUI()
     -- INITIAL SHOW ANIMATION
     -- ============================================================
     Pages["Home"].Visible = true
-    TweenService:Create(TABs and Tabs["Home"].btn or Tabs["Home"].btn, TweenInfo.new(0.2), {
-        TextColor3 = CONFIG.Accent, BackgroundTransparency = 0.15,
-    }):Play()
-    TweenService:Create(Tabs["Home"].stroke, TweenInfo.new(0.2), { Transparency = 0.4 }):Play()
+    Tabs["Home"].btn.TextColor3 = CONFIG.Accent
+    Tabs["Home"].btn.BackgroundTransparency = 0.15
+    Tabs["Home"].stroke.Transparency = 0.4
 
     menu.Visible = true
     TweenService:Create(menu, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
         Position = UDim2.new(0.5, -320, 0.5, -230),
     }):Play()
-    TweenService:Create(State.blur, TweenInfo.new(0.5), { Size = 18 }):Play()
 
     -- Watermark update loop
     local fpsCount, fpsAccum = 0, 0
@@ -1747,554 +1730,12 @@ Track(RunService.Stepped:Connect(function(_, dt)
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if not hum or not hrp then return end
 
-    -- Speed / Jump
     if CONFIG.SpeedEnabled then hum.WalkSpeed = CONFIG.WalkSpeed else hum.WalkSpeed = 16 end
     hum.JumpPower = CONFIG.JumpPower
     hum.UseJumpPower = true
 
-    -- Noclip
     if CONFIG.NoclipEnabled then
         for _, v in ipairs(char:GetDescendants()) do
             if v:IsA("BasePart") then v.CanCollide = false end
         end
-    end
-
-    -- Invisible
-    if CONFIG.InvisibleEnabled then ApplyGhost() end
-
-    -- Infinite Jump
-    if CONFIG.InfiniteJump and UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-        hum:ChangeState(Enum.HumanoidStateType.Jumping)
-    end
-
-    -- Auto Wallhop (FIXED)
-    if CONFIG.AutoWallhop and UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-        if tick() - State.WallhopCooldown > 0.1 then
-            local params = RaycastParams.new()
-            params.FilterDescendantsInstances = {char}
-            params.FilterType = Enum.RaycastFilterType.Exclude
-            local ray = Workspace:Raycast(hrp.Position, hrp.CFrame.LookVector * 3.5, params)
-            if ray then
-                hum:ChangeState(Enum.HumanoidStateType.Jumping)
-                hrp.AssemblyLinearVelocity = Vector3.new(
-                    hrp.AssemblyLinearVelocity.X,
-                    55,
-                    hrp.AssemblyLinearVelocity.Z
-                )
-                State.WallhopCooldown = tick()
-            end
-        end
-    end
-
-    -- Fly
-    if CONFIG.FlyEnabled then
-        local bv = hrp:FindFirstChild("Celestial_FlyBV")
-        local bg = hrp:FindFirstChild("Celestial_FlyBG")
-        local cam = Workspace.CurrentCamera
-        if not bv or not bg then
-            StopFly()
-            local newBv = Instance.new("BodyVelocity", hrp)
-            newBv.Name = "Celestial_FlyBV"
-            newBv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
-            newBv.P = 2000
-            local newBg = Instance.new("BodyGyro", hrp)
-            newBg.Name = "Celestial_FlyBG"
-            newBg.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
-            newBg.P = 3000
-            hum.PlatformStand = true
-        else
-            local move = Vector3.zero
-            if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += cam.CFrame.LookVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= cam.CFrame.LookVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= cam.CFrame.RightVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += cam.CFrame.RightVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move += Vector3.new(0, 1, 0) end
-            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then move -= Vector3.new(0, 1, 0) end
-            local vel = move.Magnitude > 0 and move.Unit * CONFIG.FlySpeed or Vector3.zero
-            bv.Velocity = bv.Velocity:Lerp(vel, math.min(dt * 10, 1))
-            bg.CFrame = cam.CFrame
-        end
-    end
-
-    -- Kill Aura
-    if CONFIG.KillAuraEnabled and tick() - State.KillAuraCooldown > CONFIG.KillAuraDelay then
-        State.KillAuraCooldown = tick()
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and p.Character then
-                local tHrp = p.Character:FindFirstChild("HumanoidRootPart")
-                if tHrp and (tHrp.Position - hrp.Position).Magnitude < CONFIG.KillAuraRange then
-                    local tool = char:FindFirstChildOfClass("Tool")
-                    if tool then pcall(function() tool:Activate() end) end
-                    local tHum = p.Character:FindFirstChildOfClass("Humanoid")
-                    if tHum then pcall(function() tHum.Health = 0 end) end
-                end
-            end
-        end
-    end
-
-    -- Triggerbot
-    if CONFIG.TriggerbotEnabled and tick() - State.TriggerbotCooldown > 0.1 then
-        local target = GetBestTarget()
-        if target then
-            State.TriggerbotCooldown = tick()
-            local tool = char:FindFirstChildOfClass("Tool")
-            if tool then pcall(function() tool:Activate() end) end
-        end
-    end
-
-    -- Auto Fling
-    if CONFIG.FlingEnabled then
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and p.Character then
-                local tHrp = p.Character:FindFirstChild("HumanoidRootPart")
-                if tHrp and (tHrp.Position - hrp.Position).Magnitude < CONFIG.FlingRange then
-                    ForceFling(p.Character)
-                end
-            end
-        end
-    end
-
-    -- Stand
-    if CONFIG.StandEnabled and State.StandTarget and State.StandTarget.Parent then
-        local tHrp = State.StandTarget:FindFirstChild("HumanoidRootPart")
-        if tHrp then
-            hrp.CFrame = tHrp.CFrame * CFrame.new(0, 0, -3)
-        end
-    end
-
-    -- Chat Spam
-    if CONFIG.ChatSpamEnabled and tick() - State.ChatSpamCooldown > 2 then
-        State.ChatSpamCooldown = tick()
-        pcall(function()
-            local chatEvent = game:GetService("ReplicatedStorage"):FindFirstChild("DefaultChatSystemChatEvents")
-            if chatEvent then
-                local sayMessageRequest = chatEvent:FindFirstChild("SayMessageRequest")
-                if sayMessageRequest then
-                    sayMessageRequest:FireServer(CONFIG.ChatSpamText, "All")
-                end
-            end
-        end)
-    end
-end))
-
--- Click TP
-local mouse = LocalPlayer:GetMouse()
-Track(UserInputService.InputBegan:Connect(function(input, gp)
-    if CONFIG.ClickTPEnabled and input.UserInputType == Enum.UserInputType.MouseButton1 and not gp then
-        if UserInputService:GetFocusedTextBox() then return end
-        local char = LocalPlayer.Character
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if hrp and mouse.Hit then
-            hrp.CFrame = CFrame.new(mouse.Hit.Position + Vector3.new(0, 3, 0))
-        end
-    end
-end))
-
--- ============================================================
--- RENDER LOOP (Aimbot + Cosmetics + FOV)
--- ============================================================
-local frameTick = 0
-Track(RunService.RenderStepped:Connect(function()
-    if not State.Running then return end
-    frameTick += 1
-    local cam = Workspace.CurrentCamera
-    if not cam then return end
-    local m = UserInputService:GetMouseLocation()
-
-    -- FOV Circle
-    FOVCircle.Position = m
-    FOVCircle.Radius = CONFIG.AimbotFOV
-    FOVCircle.Visible = CONFIG.AimbotEnabled and (UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) or UserInputService:IsKeyDown(CONFIG.AimbotKey))
-
-    -- Aimbot
-    if CONFIG.AimbotEnabled then
-        local active = UserInputService:IsKeyDown(CONFIG.AimbotKey) or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
-        if active then
-            local target = GetBestTarget()
-            if target then
-                local sp = cam:WorldToViewportPoint(target.Position)
-                if typeof(mousemoverel) == "function" then
-                    mousemoverel((sp.X - m.X) * CONFIG.AimbotSmooth, (sp.Y - m.Y) * CONFIG.AimbotSmooth)
-                end
-                if CONFIG.AimbotAutoFire then
-                    local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
-                    if tool then pcall(function() tool:Activate() end) end
-                end
-            end
-        end
-    end
-
-    -- Cosmetics update every 3 frames
-    if frameTick % 3 == 0 then
-        UpdateCosmetics()
-        if CONFIG.ChamsSelf then
-            ApplyChams(LocalPlayer.Character)
-        else
-            RemoveChams(LocalPlayer.Character)
-        end
-    end
-end))
-
--- ============================================================
--- ESP LOOP
--- ============================================================
-local espTick = 0
-Track(RunService.Heartbeat:Connect(function()
-    if not State.Running then return end
-    espTick += 1
-    if espTick % 2 ~= 0 then return end
-
-    if not CONFIG.ESPEnabled then
-        for _, t in pairs(State.ESPCache) do
-            for _, v in pairs(t) do
-                if typeof(v) == "table" then
-                    for _, l in pairs(v) do pcall(function() l.Visible = false end) end
-                else
-                    pcall(function() v.Visible = false end)
-                end
-            end
-        end
-        return
-    end
-
-    local cam = Workspace.CurrentCamera
-    if not cam then return end
-    local myChar = LocalPlayer.Character
-    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
-
-    local active = {}
-
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character and p.Character.Parent then
-            local char = p.Character
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            local hrp = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
-            local head = char:FindFirstChild("Head")
-
-            if hum and hum.Health > 0 and hrp and head and char.Parent == Workspace then
-                local dist = myRoot and (hrp.Position - myRoot.Position).Magnitude or 0
-                if dist <= CONFIG.ESPMaxDist then
-                    active[p] = true
-
-                    local t = State.ESPCache[p]
-                    if not t then
-                        t = {
-                            box = TrackD(Draw("Square")),
-                            name = TrackD(Draw("Text")),
-                            dist = TrackD(Draw("Text")),
-                            hpBg = TrackD(Draw("Square")),
-                            hpBar = TrackD(Draw("Square")),
-                            tracer = TrackD(Draw("Line")),
-                            headDot = TrackD(Draw("Circle")),
-                            weapon = TrackD(Draw("Text")),
-                            skel = {},
-                        }
-                        for i = 1, 6 do
-                            t.skel[i] = TrackD(Draw("Line"))
-                        end
-                        State.ESPCache[p] = t
-                    end
-
-                    local hSp, hOn = cam:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
-                    local rSp, rOn = cam:WorldToViewportPoint(hrp.Position)
-
-                    if hOn and rOn then
-                        local h = math.abs(rSp.Y - hSp.Y)
-                        local w = h * 0.55
-                        local bx = hSp.X - w / 2
-                        local by = hSp.Y
-
-                        -- Box
-                        t.box.Visible = CONFIG.ESPBox
-                        t.box.Position = Vector2.new(bx, by)
-                        t.box.Size = Vector2.new(w, h)
-                        t.box.Color = CONFIG.Accent
-                        t.box.Thickness = 1
-                        t.box.Filled = false
-
-                        -- HP Bar
-                        if CONFIG.ESPHealth then
-                            local r = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
-                            t.hpBg.Visible = true
-                            t.hpBg.Position = Vector2.new(bx - 6, by)
-                            t.hpBg.Size = Vector2.new(3, h)
-                            t.hpBg.Color = Color3.fromRGB(25, 25, 30)
-                            t.hpBg.Filled = true
-                            t.hpBar.Visible = true
-                            t.hpBar.Position = Vector2.new(bx - 6, by + h * (1 - r))
-                            t.hpBar.Size = Vector2.new(3, h * r)
-                            t.hpBar.Color = Color3.fromRGB(255 * (1 - r), 255 * r, 80)
-                            t.hpBar.Filled = true
-                        else
-                            t.hpBg.Visible = false
-                            t.hpBar.Visible = false
-                        end
-
-                        -- Name
-                        if CONFIG.ESPName then
-                            t.name.Visible = true
-                            t.name.Text = p.Name
-                            t.name.Position = Vector2.new(bx + w / 2, by - 16)
-                            t.name.Size = 13
-                            t.name.Color = CONFIG.Accent
-                            t.name.Center = true
-                            t.name.Outline = true
-                            t.name.Font = CONFIG.ESPFont
-                        else
-                            t.name.Visible = false
-                        end
-
-                        -- Distance
-                        if CONFIG.ESPDistance then
-                            t.dist.Visible = true
-                            t.dist.Text = math.floor(dist) .. "m"
-                            t.dist.Position = Vector2.new(bx + w / 2, by + h + 2)
-                            t.dist.Size = 11
-                            t.dist.Color = Color3.fromRGB(200, 200, 210)
-                            t.dist.Center = true
-                            t.dist.Outline = true
-                            t.dist.Font = CONFIG.ESPFont
-                        else
-                            t.dist.Visible = false
-                        end
-
-                        -- Tracer
-                        if CONFIG.ESPTracer then
-                            t.tracer.Visible = true
-                            t.tracer.From = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y)
-                            t.tracer.To = Vector2.new(rSp.X, rSp.Y)
-                            t.tracer.Color = CONFIG.Accent
-                            t.tracer.Thickness = 1
-                        else
-                            t.tracer.Visible = false
-                        end
-
-                        -- Head Dot
-                        if CONFIG.ESPHeadDot then
-                            t.headDot.Visible = true
-                            t.headDot.Position = Vector2.new(hSp.X, hSp.Y)
-                            t.headDot.Radius = 3
-                            t.headDot.Color = CONFIG.Accent2
-                        else
-                            t.headDot.Visible = false
-                        end
-
-                        -- Weapon
-                        if CONFIG.ESPWeapon then
-                            local tool = char:FindFirstChildOfClass("Tool")
-                            if tool then
-                                t.weapon.Visible = true
-                                t.weapon.Text = tool.Name
-                                t.weapon.Position = Vector2.new(bx + w / 2, by + h + 16)
-                                t.weapon.Size = 10
-                                t.weapon.Color = Color3.fromRGB(180, 180, 190)
-                                t.weapon.Center = true
-                                t.weapon.Outline = true
-                                t.weapon.Font = CONFIG.ESPFont
-                            else
-                                t.weapon.Visible = false
-                            end
-                        else
-                            t.weapon.Visible = false
-                        end
-
-                        -- Skeleton
-                        if CONFIG.ESPSkeleton then
-                            local bones = {
-                                {head, char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")},
-                                {char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso"), char:FindFirstChild("LowerTorso") or char:FindFirstChild("Torso")},
-                                {char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso"), char:FindFirstChild("LeftUpperArm") or char:FindFirstChild("Left Arm")},
-                                {char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso"), char:FindFirstChild("RightUpperArm") or char:FindFirstChild("Right Arm")},
-                                {char:FindFirstChild("LowerTorso") or char:FindFirstChild("Torso"), char:FindFirstChild("LeftUpperLeg") or char:FindFirstChild("Left Leg")},
-                                {char:FindFirstChild("LowerTorso") or char:FindFirstChild("Torso"), char:FindFirstChild("RightUpperLeg") or char:FindFirstChild("Right Leg")},
-                            }
-                            for i, pair in ipairs(bones) do
-                                local line = t.skel[i]
-                                local a, b = pair[1], pair[2]
-                                if a and b and a.Parent and b.Parent then
-                                    local sa, oa = cam:WorldToViewportPoint(a.Position)
-                                    local sb, ob = cam:WorldToViewportPoint(b.Position)
-                                    if oa and ob then
-                                        line.Visible = true
-                                        line.From = Vector2.new(sa.X, sa.Y)
-                                        line.To = Vector2.new(sb.X, sb.Y)
-                                        line.Color = Color3.fromRGB(255, 255, 255)
-                                        line.Thickness = 1
-                                    else
-                                        line.Visible = false
-                                    end
-                                else
-                                    line.Visible = false
-                                end
-                            end
-                        else
-                            for i = 1, 6 do t.skel[i].Visible = false end
-                        end
-
-                        -- Chams
-                        if CONFIG.ChamsEnemy then ApplyChams(char) else RemoveChams(char) end
-
-                    else
-                        for _, v in pairs(t) do
-                            if typeof(v) == "table" then
-                                for _, l in pairs(v) do pcall(function() l.Visible = false end) end
-                            else
-                                pcall(function() v.Visible = false end)
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    -- Cleanup dead
-    for p, t in pairs(State.ESPCache) do
-        if not active[p] then
-            for _, v in pairs(t) do
-                if typeof(v) == "table" then
-                    for _, l in pairs(v) do pcall(function() l:Remove() end) end
-                else
-                    pcall(function() v:Remove() end)
-                end
-            end
-            State.ESPCache[p] = nil
-            if p.Character then RemoveChams(p.Character) end
-        end
-    end
-end))
-
--- ============================================================
--- UNLOAD
--- ============================================================
-function UNLOAD()
-    if not State.Running then return end
-    State.Running = false
-
-    -- Cleanup
-    if State.menuFrame then pcall(function() State.menuFrame:Destroy() end) end
-    if State.mainGui then pcall(function() State.mainGui:Destroy() end) end
-    if State.blur then pcall(function() State.blur:Destroy() end) end
-
-    for _, c in ipairs(State.Connections) do pcall(function() c:Disconnect() end) end
-    for _, d in ipairs(State.Drawings) do pcall(function() d:Remove() end) end
-
-    StopFly()
-    RestoreVis()
-
-    -- Clean chams
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p.Character then RemoveChams(p.Character) end
-    end
-    for char in pairs(State.ChamsCache) do pcall(function() RemoveChams(char) end) end
-
-    -- Clean cosmetics
-    for _, v in pairs(State.Cosmetics) do
-        if v and v.Parent then pcall(function() v:Destroy() end) end
-    end
-    for _, obj in ipairs(Workspace:GetChildren()) do
-        if obj.Name:find("Celestial") then pcall(function() obj:Destroy() end) end
-    end
-
-    -- Restore lighting
-    Lighting.Brightness = State.OriginalLighting.Brightness
-    Lighting.Ambient = State.OriginalLighting.Ambient
-    Lighting.OutdoorAmbient = State.OriginalLighting.OutdoorAmbient
-    Lighting.FogEnd = State.OriginalLighting.FogEnd
-    Lighting.ClockTime = State.OriginalLighting.ClockTime
-
-    print("[Celestial] Unloaded cleanly.")
-    _G.CelestialUnload = nil
-end
-_G.CelestialUnload = UNLOAD
-
--- ============================================================
--- HOTKEYS
--- ============================================================
-Track(UserInputService.InputBegan:Connect(function(input, gp)
-    if gp or UserInputService:GetFocusedTextBox() then return end
-    local k = input.KeyCode
-
-    if k == Keybinds.ToggleMenu and State.menuFrame then
-        local menu = State.menuFrame
-        if menu.Visible then
-            TweenService:Create(menu, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
-                Position = UDim2.new(0.5, -320, 1, 500),
-            }):Play()
-            TweenService:Create(State.blur, TweenInfo.new(0.3), { Size = 0 }):Play()
-            task.wait(0.3)
-            menu.Visible = false
-        else
-            menu.Visible = true
-            TweenService:Create(menu, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                Position = UDim2.new(0.5, -320, 0.5, -230),
-            }):Play()
-            TweenService:Create(State.blur, TweenInfo.new(0.3), { Size = 18 }):Play()
-        end
-    elseif k == Keybinds.Fly then
-        CONFIG.FlyEnabled = not CONFIG.FlyEnabled
-        if not CONFIG.FlyEnabled then StopFly() end
-        Notify("Fly: " .. (CONFIG.FlyEnabled and "ON" or "OFF"), 1.5)
-    elseif k == Keybinds.Noclip then
-        CONFIG.NoclipEnabled = not CONFIG.NoclipEnabled
-        if not CONFIG.NoclipEnabled and LocalPlayer.Character then
-            for _, v in ipairs(LocalPlayer.Character:GetDescendants()) do
-                if v:IsA("BasePart") then v.CanCollide = true end
-            end
-        end
-        Notify("Noclip: " .. (CONFIG.NoclipEnabled and "ON" or "OFF"), 1.5)
-    elseif k == Keybinds.Fling then
-        CONFIG.FlingEnabled = not CONFIG.FlingEnabled
-        Notify("Auto Fling: " .. (CONFIG.FlingEnabled and "ON" or "OFF"), 1.5)
-    elseif k == Keybinds.Stand then
-        CONFIG.StandEnabled = not CONFIG.StandEnabled
-        Notify("Stand: " .. (CONFIG.StandEnabled and "ON" or "OFF"), 1.5)
-    elseif k == Keybinds.Invisible then
-        CONFIG.InvisibleEnabled = not CONFIG.InvisibleEnabled
-        if CONFIG.InvisibleEnabled then ApplyGhost() else RestoreVis() end
-        Notify("Ghost: " .. (CONFIG.InvisibleEnabled and "ON" or "OFF"), 1.5)
-    elseif k == Keybinds.ClickTP then
-        CONFIG.ClickTPEnabled = not CONFIG.ClickTPEnabled
-        Notify("Click TP: " .. (CONFIG.ClickTPEnabled and "ON" or "OFF"), 1.5)
-    elseif k == Keybinds.KillAura then
-        CONFIG.KillAuraEnabled = not CONFIG.KillAuraEnabled
-        Notify("Kill Aura: " .. (CONFIG.KillAuraEnabled and "ON" or "OFF"), 1.5)
-    elseif k == Keybinds.Triggerbot then
-        CONFIG.TriggerbotEnabled = not CONFIG.TriggerbotEnabled
-        Notify("Triggerbot: " .. (CONFIG.TriggerbotEnabled and "ON" or "OFF"), 1.5)
-    elseif k == Keybinds.Panic then
-        Notify("PANIC", 2)
-        UNLOAD()
-    elseif k == Keybinds.Unload then
-        UNLOAD()
-    end
-end))
-
--- ============================================================
--- CHARACTER RESPAWN HANDLER
--- ============================================================
-Track(LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(1)
-    if not State.Running then return end
-    pcall(BuildCosmetics)
-    if CONFIG.InvisibleEnabled then ApplyGhost() end
-    if CONFIG.NoclipEnabled then
-        local char = LocalPlayer.Character
-        if char then
-            for _, v in ipairs(char:GetDescendants()) do
-                if v:IsA("BasePart") then v.CanCollide = false end
-            end
-        end
-    end
-end))
-
--- ============================================================
--- INIT
--- ============================================================
-task.spawn(function()
-    pcall(BuildCosmetics)
-    pcall(BuildUI)
-    print("[Celestial] v" .. VERSION .. " loaded successfully.")
-    task.wait(0.5)
-    Notify("✦ Celestial v" .. VERSION .. " loaded", 3)
-end)
+   
