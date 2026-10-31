@@ -1,5 +1,5 @@
 -- ============================================================
--- CELESTIAL v7.4 — FULL WORKING (no cut)
+-- CELESTIAL v7.5 — FIXED BY WORM SHADOW
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -13,8 +13,12 @@ local Lighting = game:GetService("Lighting")
 local VIM = game:GetService("VirtualInputManager")
 local LocalPlayer = Players.LocalPlayer
 
+-- Безопасное получение PlayerModule
+local PlayerModule = require(LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule"))
+local Controls = PlayerModule:GetControls()
+
 local CELESTIAL_ASSET = "rbxassetid://94872985442978"
-local VERSION = "7.4"
+local VERSION = "7.5"
 
 -- ============================================================
 -- CONFIG
@@ -168,7 +172,7 @@ local function Notify(text, duration)
 end
 
 -- ============================================================
--- COSMETICS (FIXED AURA)
+-- COSMETICS
 -- ============================================================
 local function BuildCosmetics()
     if not State.Cosmetics.Halo then
@@ -271,7 +275,6 @@ local function UpdateCosmetics()
         end
     end
 
-    -- AURA fixed (attachment on hrp, not folder)
     if hrp then
         if CONFIG.AuraEnabled then
             local att = hrp:FindFirstChild("Celestial_AuraAtt")
@@ -351,29 +354,23 @@ local function StopFly()
     local char = LocalPlayer.Character
     if not char then return end
     local hrp = char:FindFirstChild("HumanoidRootPart")
-    local hum = char:FindFirstChildOfClass("Humanoid")
     if hrp then
         for _, c in ipairs(hrp:GetChildren()) do
             if c.Name == "Celestial_FlyBV" or c.Name == "Celestial_FlyBG" then c:Destroy() end
         end
     end
-    if hum then hum.PlatformStand = false end
+    Controls:Enable() -- Fix: safe enable
 end
 
--- Fling — 3 methods chain
+-- Fling — Fixed physics breakage
 local function ForceFling(char)
     if not char then return end
     local hrp = char:FindFirstChild("HumanoidRootPart")
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hrp or not hum then return end
+    
     pcall(function()
-        hrp:SetNetworkOwner(LocalPlayer)
         hum:ChangeState(Enum.HumanoidStateType.Physics)
-        hrp.AssemblyLinearVelocity = Vector3.new(1e5, 1e5, 1e5)
-        hrp.AssemblyAngularVelocity = Vector3.new(1e5, 1e5, 1e5)
-    end)
-    task.wait(0.05)
-    pcall(function()
         local bv = Instance.new("BodyVelocity", hrp)
         bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
         bv.Velocity = Vector3.new(1e5, 1e5, 1e5)
@@ -385,7 +382,7 @@ local function ForceFling(char)
     end)
 end
 
--- Invisible — aggressive spam
+-- Invisible — Fixed ghost visual
 local function ApplyGhost()
     local char = LocalPlayer.Character
     if not char then return end
@@ -420,7 +417,7 @@ local function RestoreVis()
     end
     local hum = char:FindFirstChildOfClass("Humanoid")
     if hum then
-        hum.DisplayDisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
+        hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer -- Fix: typo fixed
         hum.NameDisplayDistance = 100
         hum.HealthDisplayDistance = 100
     end
@@ -498,7 +495,6 @@ local function BuildUI()
     local ms = Create("UIStroke", { Parent = menu, Thickness = 1.5, Transparency = 0.2, Color = CONFIG.Accent })
     ApplyGradient(ms)
 
-    -- Header
     local header = Create("Frame", { Parent = menu, Size = UDim2.new(1,0,0,62), BackgroundTransparency = 1, ZIndex = 3 })
 
     local logo = Create("ImageLabel", {
@@ -545,7 +541,6 @@ local function BuildUI()
         Position = UDim2.new(0,20,0,62), BackgroundColor3 = Color3.fromRGB(35,35,45),
         BorderSizePixel = 0, ZIndex = 3 })
 
-    -- Search
     local searchFrame = Create("Frame", {
         Parent = menu, Size = UDim2.new(1,-40,0,32),
         Position = UDim2.new(0,20,0,72),
@@ -574,7 +569,6 @@ local function BuildUI()
         end
     end)
 
-    -- Sidebar
     local sidebar = Create("Frame", {
         Parent = menu, Size = UDim2.new(0,160,1,-130),
         Position = UDim2.new(0,20,0,116), BackgroundTransparency = 1, ZIndex = 3,
@@ -670,7 +664,6 @@ local function BuildUI()
             TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 5,
         }))
 
-        -- smaller toggle 28x14, knob 10
         local sw = Create("Frame", {
             Parent = row, Size = UDim2.new(0,28,0,14),
             Position = UDim2.new(1,-28,0.5,-7),
@@ -821,7 +814,6 @@ local function BuildUI()
         RegisterSearch({ row = btn, text = text:lower() })
     end
 
-    -- TABS
     local HomeTab = CreateTab("Home", "🏠", 1)
     local CombatTab = CreateTab("Combat", "⚔️", 2)
     local VisualsTab = CreateTab("Visuals", "👁️", 3)
@@ -831,7 +823,6 @@ local function BuildUI()
     local MusicTab = CreateTab("Music", "🎵", 7)
     local SettingsTab = CreateTab("Settings", "⚙️", 8)
 
-    -- HOME
     local pCard = CreateCard(HomeTab, "Player")
     Create("TextLabel", { Parent = pCard, Size = UDim2.new(1,0,0,20),
         BackgroundTransparency = 1, Text = "User: " .. LocalPlayer.Name,
@@ -842,7 +833,6 @@ local function BuildUI()
         Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = CONFIG.TextDark,
         TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 5 })
 
-    -- COMBAT
     local aimCard = CreateCard(CombatTab, "Aimbot")
     CreateToggle(aimCard, "Enable Aimbot (RMB)", CONFIG.AimbotEnabled, function(v) CONFIG.AimbotEnabled = v end, 1)
     CreateSlider(aimCard, "FOV Radius", 20, 600, CONFIG.AimbotFOV, "px", function(v) CONFIG.AimbotFOV = v; FOVCircle.Radius = v end, 2)
@@ -861,7 +851,6 @@ local function BuildUI()
     local tbCard = CreateCard(CombatTab, "Triggerbot")
     CreateToggle(tbCard, "Enable (" .. Keybinds.Triggerbot.Name .. ")", CONFIG.TriggerbotEnabled, function(v) CONFIG.TriggerbotEnabled = v end, 1)
 
-    -- VISUALS
     local espCard = CreateCard(VisualsTab, "ESP")
     CreateToggle(espCard, "Enable ESP", CONFIG.ESPEnabled, function(v) CONFIG.ESPEnabled = v end, 1)
     CreateToggle(espCard, "Box", CONFIG.ESPBox, function(v) CONFIG.ESPBox = v end, 2)
@@ -897,7 +886,6 @@ local function BuildUI()
         Lighting.FogEnd = v and 100000 or State.OriginalLighting.FogEnd
     end, 2)
 
-    -- COSMETICS
     local wingsCard = CreateCard(CosmeticsTab, "Wings")
     CreateToggle(wingsCard, "Enable Wings", CONFIG.WingsEnabled, function(v) CONFIG.WingsEnabled = v end, 1)
     local crownCard = CreateCard(CosmeticsTab, "Crown")
@@ -911,7 +899,6 @@ local function BuildUI()
     local gcCard = CreateCard(CosmeticsTab, "Ground Circle")
     CreateToggle(gcCard, "Enable Circle", CONFIG.GroundCircle, function(v) CONFIG.GroundCircle = v end, 1)
 
-    -- MOVEMENT
     local flyCard = CreateCard(MovementTab, "Flight")
     CreateToggle(flyCard, "Fly (Fast)", CONFIG.FlyEnabled, function(v) CONFIG.FlyEnabled = v; if not v then StopFly() end end, 1)
     CreateSlider(flyCard, "Fly Speed", 20, 300, CONFIG.FlySpeed, "", function(v) CONFIG.FlySpeed = v end, 2)
@@ -926,7 +913,6 @@ local function BuildUI()
     CreateToggle(moveCard, "Click TP (" .. Keybinds.ClickTP.Name .. ")", CONFIG.ClickTPEnabled, function(v) CONFIG.ClickTPEnabled = v end, 7)
     CreateToggle(moveCard, "Stand (Follow)", CONFIG.StandEnabled, function(v) CONFIG.StandEnabled = v end, 8)
 
-    -- TROLL
     local flingCard = CreateCard(TrollTab, "Fling")
     CreateToggle(flingCard, "Auto Fling (" .. Keybinds.Fling.Name .. ")", CONFIG.FlingEnabled, function(v) CONFIG.FlingEnabled = v end, 1)
     CreateSlider(flingCard, "Fling Range", 5, 100, CONFIG.FlingRange, "s", function(v) CONFIG.FlingRange = v end, 2)
@@ -974,7 +960,6 @@ local function BuildUI()
     CreateButton(emoteCard, "Dance Nearest", function() PlayEmoteNearest("507771019", "Dance") end, 2)
     CreateButton(emoteCard, "Laugh Nearest", function() PlayEmoteNearest("507770818", "Laugh") end, 3)
 
-    -- MUSIC
     local songsCard = CreateCard(MusicTab, "Songs")
     local sortedSongs = {}
     for k in pairs(SONGS) do table.insert(sortedSongs, k) end
@@ -987,7 +972,6 @@ local function BuildUI()
         Notify("Stopped", 1.5)
     end, 1)
 
-    -- SETTINGS
     local themeCard = CreateCard(SettingsTab, "Theme Color")
     local palFrame = Create("Frame", {
         Parent = themeCard, Size = UDim2.new(1,0,0,90),
@@ -1034,7 +1018,6 @@ local function BuildUI()
         end
     end, 2)
 
-    -- Dragging
     local drag, dragStart, startPos
     header.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -1051,7 +1034,6 @@ local function BuildUI()
         if i.UserInputType == Enum.UserInputType.MouseButton1 then drag = false end
     end))
 
-    -- Open animation
     Pages["Home"].Visible = true
     Tabs["Home"].btn.TextColor3 = CONFIG.Accent
     Tabs["Home"].btn.BackgroundTransparency = 0.15
@@ -1062,7 +1044,6 @@ local function BuildUI()
         Position = UDim2.new(0.5, -320, 0.5, -230)
     }):Play()
 
-    -- Watermark (floating)
     local wmGui = Instance.new("ScreenGui")
     wmGui.Name = "CelestialWM"
     wmGui.ResetOnSpawn = false
@@ -1147,8 +1128,8 @@ local function GetBestTarget()
     return best
 end
 
--- Silent aim hook
-if typeof(hookmetamethod) == "function" then
+-- Silent aim hook (Fixed safe check)
+if typeof(hookmetamethod) == "function" and typeof(getnamecallmethod) == "function" then
     local inSilent = false
     local oldNC = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
         if not State.Running then return oldNC(self, ...) end
@@ -1201,7 +1182,6 @@ Track(RunService.Stepped:Connect(function(_, dt)
         hum:ChangeState(Enum.HumanoidStateType.Jumping)
     end
 
-    -- Wallhop (fixed)
     if CONFIG.AutoWallhop and UserInputService:IsKeyDown(Enum.KeyCode.Space) then
         if tick() - State.WallhopCooldown > 0.15 then
             local state = hum:GetState()
@@ -1223,7 +1203,6 @@ Track(RunService.Stepped:Connect(function(_, dt)
         end
     end
 
-    -- Fly
     if CONFIG.FlyEnabled then
         local cam = Workspace.CurrentCamera
         local bv = hrp:FindFirstChild("Celestial_FlyBV")
@@ -1236,7 +1215,7 @@ Track(RunService.Stepped:Connect(function(_, dt)
             local g = Instance.new("BodyGyro", hrp)
             g.Name = "Celestial_FlyBG"
             g.MaxTorque = Vector3.new(1e5,1e5,1e5); g.P = 3000
-            hum.PlatformStand = true
+            Controls:Disable() -- Fix: safe disable
         else
             local move = Vector3.zero
             if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += cam.CFrame.LookVector end
@@ -1251,7 +1230,6 @@ Track(RunService.Stepped:Connect(function(_, dt)
         end
     end
 
-    -- Kill Aura
     if CONFIG.KillAuraEnabled and tick() - State.KillAuraCooldown > CONFIG.KillAuraDelay then
         State.KillAuraCooldown = tick()
         for _, p in ipairs(Players:GetPlayers()) do
@@ -1267,7 +1245,6 @@ Track(RunService.Stepped:Connect(function(_, dt)
         end
     end
 
-    -- Triggerbot
     if CONFIG.TriggerbotEnabled and tick() - State.TriggerbotCooldown > 0.1 then
         local t = GetBestTarget()
         if t then
@@ -1277,7 +1254,6 @@ Track(RunService.Stepped:Connect(function(_, dt)
         end
     end
 
-    -- Auto Fling
     if CONFIG.FlingEnabled then
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= LocalPlayer and p.Character then
@@ -1289,14 +1265,12 @@ Track(RunService.Stepped:Connect(function(_, dt)
         end
     end
 
-    -- Stand
     if CONFIG.StandEnabled and State.StandTarget and State.StandTarget.Parent then
         local tHrp = State.StandTarget:FindFirstChild("HumanoidRootPart")
         if tHrp then hrp.CFrame = tHrp.CFrame * CFrame.new(0, 0, -3) end
     end
 end))
 
--- Click TP
 local mouse = LocalPlayer:GetMouse()
 Track(UserInputService.InputBegan:Connect(function(input, gp)
     if CONFIG.ClickTPEnabled and input.UserInputType == Enum.UserInputType.MouseButton1 and not gp then
@@ -1309,9 +1283,6 @@ Track(UserInputService.InputBegan:Connect(function(input, gp)
     end
 end))
 
--- ============================================================
--- RENDER (aimbot + cosmetics)
--- ============================================================
 local frameTick = 0
 Track(RunService.RenderStepped:Connect(function()
     if not State.Running then return end
@@ -1324,7 +1295,6 @@ Track(RunService.RenderStepped:Connect(function()
     FOVCircle.Radius = CONFIG.AimbotFOV
     FOVCircle.Visible = CONFIG.AimbotEnabled and (UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) or UserInputService:IsKeyDown(CONFIG.AimbotKey))
 
-    -- Invisible spam
     if CONFIG.InvisibleEnabled then ApplyGhost() end
 
     if CONFIG.AimbotEnabled then
@@ -1350,9 +1320,6 @@ Track(RunService.RenderStepped:Connect(function()
     end
 end))
 
--- ============================================================
--- ESP
--- ============================================================
 local espTick = 0
 Track(RunService.Heartbeat:Connect(function()
     if not State.Running then return end
@@ -1536,9 +1503,6 @@ Track(RunService.Heartbeat:Connect(function()
     end
 end))
 
--- ============================================================
--- UNLOAD
--- ============================================================
 function UNLOAD()
     if not State.Running then return end
     State.Running = false
@@ -1574,9 +1538,6 @@ function UNLOAD()
 end
 _G.CelestialUnload = UNLOAD
 
--- ============================================================
--- HOTKEYS
--- ============================================================
 Track(UserInputService.InputBegan:Connect(function(input, gp)
     if gp or UserInputService:GetFocusedTextBox() then return end
     local k = input.KeyCode
@@ -1631,9 +1592,6 @@ Track(UserInputService.InputBegan:Connect(function(input, gp)
     end
 end))
 
--- ============================================================
--- RESPAWN
--- ============================================================
 Track(LocalPlayer.CharacterAdded:Connect(function()
     task.wait(1)
     if not State.Running then return end
@@ -1649,13 +1607,10 @@ Track(LocalPlayer.CharacterAdded:Connect(function()
     end
 end))
 
--- ============================================================
--- INIT
--- ============================================================
 task.spawn(function()
     pcall(BuildCosmetics)
     pcall(BuildUI)
-    print("[Celestial] v7.4 loaded successfully.")
+    print("[Celestial] v7.5 loaded successfully.")
     task.wait(0.5)
     Notify("✦ Celestial v" .. VERSION .. " loaded", 3)
 end)
