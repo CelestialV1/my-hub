@@ -1,5 +1,5 @@
 -- ============================================================
--- CELESTIAL v8.5 — FULL UI + BINDS + CONFIGS + FIXES
+-- CELESTIAL v9.0 — FULL RESTORE + FIXES
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -15,10 +15,11 @@ local VIM = game:GetService("VirtualInputManager")
 local LocalPlayer = Players.LocalPlayer
 
 local CELESTIAL_ASSET = "rbxassetid://94872985442978"
-local VERSION = "8.5"
+local VERSION = "9.0"
+local CONFIG_FOLDER = "CelestialConfigs"
 
 -- ============================================================
--- CONFIG & BINDS
+-- CONFIG
 -- ============================================================
 local CONFIG = {
     Accent   = Color3.fromRGB(160, 110, 255),
@@ -27,9 +28,9 @@ local CONFIG = {
     CardBg   = Color3.fromRGB(18, 18, 24),
     Text     = Color3.fromRGB(240, 240, 250),
     TextDark = Color3.fromRGB(140, 140, 160),
-    GUIFont  = Enum.Font.Gotham,
 
-    AimbotEnabled = false, AimbotFOV = 200, AimbotSmooth = 0.35, AimbotPart = "Head",
+    AimbotEnabled = false, AimbotKey = Enum.KeyCode.E,
+    AimbotFOV = 200, AimbotSmooth = 0.35, AimbotPart = "Head",
     AimbotPredict = 0.15, AimbotAutoFire = false, AimbotVisible = false,
     KillAuraEnabled = false, KillAuraRange = 25, KillAuraDelay = 0.1,
     TriggerbotEnabled = false,
@@ -37,7 +38,7 @@ local CONFIG = {
     ESPEnabled = true, ESPBox = true, ESPHealth = true,
     ESPName = true, ESPDistance = true, ESPSkeleton = true,
     ESPWeapon = true, ESPTracer = true, ESPHeadDot = true,
-    ESPMaxDist = 1500, ESPFont = Drawing.Fonts.Plex,
+    ESPMaxDist = 1500,
 
     ChamsEnemy = false, ChamsSelf = false, ChamsRainbow = false,
     ChamsColor = Color3.fromRGB(160, 110, 255),
@@ -56,7 +57,6 @@ local CONFIG = {
     InvisibleEnabled = false,
 }
 
--- По умолчанию все бинды пустые, кроме меню
 local BINDS = {
     ToggleMenu = Enum.KeyCode.H,
     Fly = Enum.KeyCode.Unknown,
@@ -102,6 +102,9 @@ local function TrackD(d) if State.Running and d then table.insert(State.Drawings
 local function RegisterTheme(o) if State.Running then table.insert(State.ThemeObjects, o) end return o end
 local function RegisterSearch(w) if State.Running then table.insert(State.SearchWidgets, w) end end
 
+-- ============================================================
+-- DRAWING
+-- ============================================================
 local Draw = Drawing.new
 local FOVCircle = TrackD(Draw("Circle"))
 FOVCircle.Thickness = 1.5
@@ -111,6 +114,9 @@ FOVCircle.Transparency = 0.9
 FOVCircle.Radius = CONFIG.AimbotFOV
 FOVCircle.Visible = false
 
+-- ============================================================
+-- UI HELPERS
+-- ============================================================
 local function Create(c, p, ch)
     local i = Instance.new(c)
     for k, v in pairs(p) do i[k] = v end
@@ -148,7 +154,7 @@ local function Notify(text, duration)
 end
 
 -- ============================================================
--- COSMETICS (Fixed Crown, Wings, Circle)
+-- COSMETICS (MESHES + WELDS)
 -- ============================================================
 local function BuildCosmetics()
     if not State.Cosmetics.Halo then
@@ -174,14 +180,23 @@ local function BuildCosmetics()
     end
     if not State.Cosmetics.Wings then
         local m = Instance.new("Model", Workspace); m.Name = "Celestial_Wings"
-        for _ = 1, 16 do
-            local p = Instance.new("Part", m)
-            p.Name = "WingBeam"; p.Anchored = true
-            p.CanCollide = false; p.CanQuery = false
-            p.Transparency = 1; p.Size = Vector3.new(0.2,0.2,0.2)
-            p.Material = Enum.Material.Neon
-        end
-        State.Cosmetics.Wings = m
+        local left = Instance.new("Part", m)
+        left.Name = "LeftWing"; left.Size = Vector3.new(4, 1, 2); left.Transparency = 1
+        left.CanCollide = false; left.CanQuery = false; left.Anchored = false
+        local lm = Instance.new("SpecialMesh", left)
+        lm.MeshType = Enum.MeshType.FileMesh
+        lm.MeshId = "rbxassetid://1553468234"
+        lm.Scale = Vector3.new(0.048, 0.048, 0.048)
+
+        local right = Instance.new("Part", m)
+        right.Name = "RightWing"; right.Size = Vector3.new(4, 1, 2); right.Transparency = 1
+        right.CanCollide = false; right.CanQuery = false; right.Anchored = false
+        local rm = Instance.new("SpecialMesh", right)
+        rm.MeshType = Enum.MeshType.FileMesh
+        rm.MeshId = "rbxassetid://1553468709"
+        rm.Scale = Vector3.new(0.048, 0.048, 0.048)
+
+        State.Cosmetics.Wings = { Left = left, Right = right, Model = m }
     end
     if not State.Cosmetics.Orbit then
         local m = Instance.new("Model", Workspace); m.Name = "Celestial_Orbit"
@@ -209,6 +224,7 @@ local function UpdateCosmetics()
     if not char then return end
     local head = char:FindFirstChild("Head")
     local hrp = char:FindFirstChild("HumanoidRootPart")
+    local torso = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
     local t = tick()
 
     if State.Cosmetics.Halo and head then
@@ -230,23 +246,20 @@ local function UpdateCosmetics()
             State.Cosmetics.Crown.Color = CONFIG.Accent
         end
     end
-    if State.Cosmetics.Wings and hrp then
-        State.Cosmetics.Wings.Parent = CONFIG.WingsEnabled and Workspace or nil
+    if State.Cosmetics.Wings and torso then
+        local w = State.Cosmetics.Wings
+        w.Model.Parent = CONFIG.WingsEnabled and Workspace or nil
         if CONFIG.WingsEnabled then
-            local parts = State.Cosmetics.Wings:GetChildren()
-            local idx = 1
-            for _, side in ipairs({-1,1}) do
-                for i = 1, 8 do
-                    local p = parts[idx]; idx += 1
-                    if p then
-                        local s = i/8
-                        -- Фикс позиции крыльев
-                        p.CFrame = hrp.CFrame * CFrame.new(side*(0.5+s*2), 1+s*1.5, -1) * CFrame.Angles(0, math.rad(side*45), 0)
-                        p.Color = Color3.fromHSV((t*0.3 + i*0.1) % 1, 0.8, 1)
-                        p.Transparency = 0
-                    end
-                end
-            end
+            -- Left
+            local lw = w.Left
+            lw.CFrame = torso.CFrame * CFrame.new(-1.2, 0.5, 0.5) * CFrame.Angles(0, math.rad(90), math.rad(-15))
+            lw.Transparency = 0
+            lw.Color = Color3.fromHSV(t % 1, 0.9, 1)
+            -- Right
+            local rw = w.Right
+            rw.CFrame = torso.CFrame * CFrame.new(1.2, 0.5, 0.5) * CFrame.Angles(0, math.rad(-90), math.rad(15))
+            rw.Transparency = 0
+            rw.Color = Color3.fromHSV((t+0.5) % 1, 0.9, 1)
         end
     end
     if State.Cosmetics.Orbit and hrp then
@@ -255,7 +268,6 @@ local function UpdateCosmetics()
             for i, r in ipairs(State.Cosmetics.Orbit:GetChildren()) do
                 local a = t*(1+i*0.3) + i*(math.pi*2/3)
                 local rad = 4 + math.sin(t*2+i)*1
-                -- Фикс орбиты (крутится вокруг)
                 r.CFrame = CFrame.new(hrp.Position + Vector3.new(math.cos(a)*rad, math.sin(t*1.5+i)*1.5, math.sin(a)*rad)) * CFrame.Angles(0, 0, math.rad(90))
                 r.Color = Color3.fromHSV((t*0.2 + i*0.3) % 1, 0.8, 1)
                 r.Transparency = 0.3 + math.sin(t*3+i)*0.2
@@ -265,7 +277,6 @@ local function UpdateCosmetics()
     if State.Cosmetics.GroundCircle and hrp then
         State.Cosmetics.GroundCircle.Parent = CONFIG.GroundCircle and Workspace or nil
         if CONFIG.GroundCircle then
-            -- Фикс круга на земле
             State.Cosmetics.GroundCircle.CFrame = CFrame.new(hrp.Position - Vector3.new(0, 3, 0)) * CFrame.Angles(0, 0, math.rad(90))
             State.Cosmetics.GroundCircle.Color = CONFIG.Accent
             State.Cosmetics.GroundCircle.Transparency = 0.5 + math.sin(t*3)*0.1
@@ -274,10 +285,10 @@ local function UpdateCosmetics()
 end
 
 -- ============================================================
--- CHAMS & MOVEMENT FIXES
+-- CHAMS (FIX: ONLY ENEMY, NO WHITE BOX)
 -- ============================================================
 local function ApplyChams(char)
-    if not char then return end
+    if not char or char == LocalPlayer.Character then return end -- не красим себя
     local hl = char:FindFirstChild("Celestial_Chams")
     if not hl then
         hl = Instance.new("Highlight", char)
@@ -299,6 +310,9 @@ local function RemoveChams(char)
     end
 end
 
+-- ============================================================
+-- MOVEMENT
+-- ============================================================
 local function StopFly()
     local char = LocalPlayer.Character
     if not char then return end
@@ -308,6 +322,8 @@ local function StopFly()
             if c.Name == "Celestial_FlyBV" or c.Name == "Celestial_FlyBG" then c:Destroy() end
         end
     end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then hum.PlatformStand = false end
 end
 
 local function ForceFling(char)
@@ -315,11 +331,14 @@ local function ForceFling(char)
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
     pcall(function()
-        -- Безопасный флинг без Physics состояния
         local bv = Instance.new("BodyVelocity", hrp)
         bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
         bv.Velocity = Vector3.new(1e5, 1e5, 1e5)
         Debris:AddItem(bv, 0.4)
+        local bav = Instance.new("BodyAngularVelocity", hrp)
+        bav.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+        bav.AngularVelocity = Vector3.new(1e5, 1e5, 1e5)
+        Debris:AddItem(bav, 0.4)
     end)
 end
 
@@ -335,6 +354,12 @@ local function ApplyGhost()
             v.Transparency = 1
         end
     end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+        hum.NameDisplayDistance = 0
+        hum.HealthDisplayDistance = 0
+    end
 end
 
 local function RestoreVis()
@@ -348,6 +373,26 @@ local function RestoreVis()
         elseif v:IsA("Decal") or v:IsA("Texture") then
             v.Transparency = 0
         end
+    end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
+        hum.NameDisplayDistance = 100
+        hum.HealthDisplayDistance = 100
+    end
+end
+
+-- ============================================================
+-- ESP (FIX: CLEANUP ON DEATH / RESPAWN)
+-- ============================================================
+local function RemoveESPForPlayer(player)
+    local t = State.ESPCache[player]
+    if t then
+        for _, v in pairs(t) do
+            if typeof(v) == "table" then for _, l in pairs(v) do pcall(function() l:Remove() end) end
+            else pcall(function() v:Remove() end) end
+        end
+        State.ESPCache[player] = nil
     end
 end
 
@@ -371,9 +416,8 @@ local function BuildUI()
     ApplyGradient(ms)
 
     local header = Create("Frame", { Parent = menu, Size = UDim2.new(1,0,0,62), BackgroundTransparency = 1, ZIndex = 3 })
-    
-    Create("TextLabel", { Parent = header, Size = UDim2.new(0,200,0,22), Position = UDim2.new(0,66,0,12), BackgroundTransparency = 1, Text = "Celestial", Font = Enum.Font.GothamBold, TextSize = 18, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4 })
-    Create("TextLabel", { Parent = header, Size = UDim2.new(0,260,0,16), Position = UDim2.new(0,66,0,34), BackgroundTransparency = 1, Text = "v" .. VERSION .. " | Premium", Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = CONFIG.Accent, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4 })
+    Create("TextLabel", { Parent = header, Size = UDim2.new(0,200,0,22), Position = UDim2.new(0,20,0,12), BackgroundTransparency = 1, Text = "Celestial", Font = Enum.Font.GothamBold, TextSize = 18, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4 })
+    Create("TextLabel", { Parent = header, Size = UDim2.new(0,260,0,16), Position = UDim2.new(0,20,0,34), BackgroundTransparency = 1, Text = "v"..VERSION.." | Premium", Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = CONFIG.Accent, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4 })
 
     local closeBtn = Create("TextButton", { Parent = header, Size = UDim2.new(0,32,0,32), Position = UDim2.new(1,-46,0.5,-16), BackgroundColor3 = Color3.fromRGB(35,35,45), Text = "×", Font = Enum.Font.GothamBold, TextSize = 22, TextColor3 = CONFIG.TextDark, BorderSizePixel = 0, AutoButtonColor = false, ZIndex = 4 }, { Corner(10) })
     closeBtn.MouseButton1Click:Connect(function()
@@ -382,7 +426,7 @@ local function BuildUI()
     end)
 
     local searchFrame = Create("Frame", { Parent = menu, Size = UDim2.new(1,-40,0,32), Position = UDim2.new(0,20,0,72), BackgroundColor3 = CONFIG.CardBg, BackgroundTransparency = 0.3, BorderSizePixel = 0, ZIndex = 3 }, { Corner(8) })
-    local searchBox = Create("TextBox", { Parent = searchFrame, Size = UDim2.new(1,-40,1,0), Position = UDim2.new(0,32,0,0), BackgroundTransparency = 1, Text = "", PlaceholderText = "Search functions...", Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = CONFIG.Text, PlaceholderColor3 = CONFIG.TextDark, ClearTextOnFocus = false, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4 })
+    local searchBox = Create("TextBox", { Parent = searchFrame, Size = UDim2.new(1,-40,1,0), Position = UDim2.new(0,32,0,0), BackgroundTransparency = 1, Text = "", PlaceholderText = "Search...", Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = CONFIG.Text, PlaceholderColor3 = CONFIG.TextDark, ClearTextOnFocus = false, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4 })
     searchBox:GetPropertyChangedSignal("Text"):Connect(function()
         local q = searchBox.Text:lower()
         for _, w in ipairs(State.SearchWidgets) do
@@ -425,12 +469,12 @@ local function BuildUI()
         return card
     end
 
-    -- Модифицированные функции с биндами (Клик колесиком)
+    -- Toggle with bind (middle click)
     local function CreateToggle(parent, text, bindKey, default, cb, order)
         local row = Create("Frame", { Parent = parent, Size = UDim2.new(1,0,0,28), BackgroundTransparency = 1, LayoutOrder = order or 1 })
         
         local bindBtn = Create("TextButton", { Parent = row, Size = UDim2.new(0,50,0,20), Position = UDim2.new(1,-70,0.5,-10), BackgroundColor3 = Color3.fromRGB(35,35,45), Text = BINDS[bindKey] and BINDS[bindKey].Name or "None", Font = Enum.Font.Gotham, TextSize = 10, TextColor3 = CONFIG.TextDark, BorderSizePixel = 0, ZIndex = 6 }, { Corner(4) })
-        bindBtn.MouseButton1Click:Connect(function() end) -- Поглотитель
+        bindBtn.MouseButton1Click:Connect(function() end)
         bindBtn.InputBegan:Connect(function(i)
             if i.UserInputType == Enum.UserInputType.MouseButton3 then
                 if State.WaitingForBind then return end
@@ -444,7 +488,7 @@ local function BuildUI()
             end
         end)
 
-        local label = Create("TextLabel", { Parent = row, Size = UDim2.new(1,-120,1,0), BackgroundTransparency = 1, Text = text, Font = Enum.Font.Gotham, TextSize = 13, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 5 })
+        Create("TextLabel", { Parent = row, Size = UDim2.new(1,-120,1,0), BackgroundTransparency = 1, Text = text, Font = Enum.Font.Gotham, TextSize = 13, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 5 })
         local sw = Create("Frame", { Parent = row, Size = UDim2.new(0,28,0,14), Position = UDim2.new(1,-28,0.5,-7), BackgroundColor3 = default and CONFIG.Accent or Color3.fromRGB(40,40,50), BorderSizePixel = 0, ZIndex = 5 }, { Corner(7) })
         local kn = Create("Frame", { Parent = sw, Size = UDim2.new(0,10,0,10), Position = default and UDim2.new(1,-12,0.5,-5) or UDim2.new(0,2,0.5,-5), BackgroundColor3 = Color3.new(1,1,1), BorderSizePixel = 0, ZIndex = 6 }, { Corner(5) })
 
@@ -482,33 +526,88 @@ local function BuildUI()
         RegisterSearch({ row = row, text = text:lower() })
     end
 
-    -- Вкладки
+    local function CreateDropdown(parent, text, options, default, cb, order)
+        local row = Create("Frame", { Parent = parent, Size = UDim2.new(1,0,0,28), BackgroundTransparency = 1, LayoutOrder = order or 1 })
+        Create("TextLabel", { Parent = row, Size = UDim2.new(0.5,0,1,0), BackgroundTransparency = 1, Text = text, Font = Enum.Font.Gotham, TextSize = 13, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 5 })
+        local btn = Create("TextButton", { Parent = row, Size = UDim2.new(0,100,0,24), Position = UDim2.new(1,-100,0.5,-12), BackgroundColor3 = Color3.fromRGB(30,30,40), Text = tostring(default), Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = CONFIG.Accent, BorderSizePixel = 0, ZIndex = 5, AutoButtonColor = false }, { Corner(6) })
+        local idx = 1
+        for i, v in ipairs(options) do if v == default then idx = i end end
+        btn.MouseButton1Click:Connect(function()
+            idx = idx % #options + 1
+            btn.Text = tostring(options[idx])
+            cb(options[idx])
+        end)
+        RegisterSearch({ row = row, text = text:lower() })
+    end
+
+    local function CreateButton(parent, text, callback, order)
+        local btn = Create("TextButton", { Parent = parent, Size = UDim2.new(1,0,0,32), BackgroundColor3 = Color3.fromRGB(30,30,40), Text = text, Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = CONFIG.Text, BorderSizePixel = 0, AutoButtonColor = false, LayoutOrder = order or 1, ZIndex = 5 }, { Corner(6) })
+        btn.MouseEnter:Connect(function() TweenService:Create(btn, TweenInfo.new(0.15), { BackgroundColor3 = CONFIG.Accent, TextColor3 = Color3.new(0,0,0) }):Play() end)
+        btn.MouseLeave:Connect(function() TweenService:Create(btn, TweenInfo.new(0.15), { BackgroundColor3 = Color3.fromRGB(30,30,40), TextColor3 = CONFIG.Text }):Play() end)
+        btn.MouseButton1Click:Connect(callback)
+        RegisterSearch({ row = btn, text = text:lower() })
+    end
+
+    -- TABS
     local HomeTab = CreateTab("Home", "🏠", 1)
     local CombatTab = CreateTab("Combat", "⚔️", 2)
     local VisualsTab = CreateTab("Visuals", "👁️", 3)
     local CosmeticsTab = CreateTab("Cosmetics", "✨", 4)
     local MovementTab = CreateTab("Movement", "🏃", 5)
     local TrollTab = CreateTab("Troll", "😈", 6)
-    local SettingsTab = CreateTab("Configs", "⚙️", 7)
+    local MusicTab = CreateTab("Music", "🎵", 7)
+    local SettingsTab = CreateTab("Configs", "⚙️", 8)
 
-    -- Combat
+    -- HOME
+    local pCard = CreateCard(HomeTab, "Player")
+    Create("TextLabel", { Parent = pCard, Size = UDim2.new(1,0,0,20), BackgroundTransparency = 1, Text = "User: " .. LocalPlayer.Name, Font = Enum.Font.Gotham, TextSize = 13, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 5 })
+    Create("TextLabel", { Parent = pCard, Size = UDim2.new(1,0,0,20), BackgroundTransparency = 1, Text = "ID: " .. LocalPlayer.UserId, Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = CONFIG.TextDark, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 5 })
+
+    -- COMBAT
     local aimCard = CreateCard(CombatTab, "Aimbot")
     CreateToggle(aimCard, "Enable Aimbot", "Aimbot", CONFIG.AimbotEnabled, function(v) CONFIG.AimbotEnabled = v end, 1)
     CreateSlider(aimCard, "FOV Radius", 20, 600, CONFIG.AimbotFOV, "px", function(v) CONFIG.AimbotFOV = v; FOVCircle.Radius = v end, 2)
     CreateSlider(aimCard, "Smoothness", 5, 100, math.floor(CONFIG.AimbotSmooth * 100), "%", function(v) CONFIG.AimbotSmooth = v/100 end, 3)
-    
+    CreateSlider(aimCard, "Prediction", 0, 50, math.floor(CONFIG.AimbotPredict * 100), "ms", function(v) CONFIG.AimbotPredict = v/100 end, 4)
+    CreateDropdown(aimCard, "Part", {"Head","Torso","HumanoidRootPart"}, CONFIG.AimbotPart, function(v) CONFIG.AimbotPart = v end, 5)
+    CreateToggle(aimCard, "Auto Fire", "AutoFire", CONFIG.AimbotAutoFire, function(v) CONFIG.AimbotAutoFire = v end, 7)
+    CreateToggle(aimCard, "Visible Check", "VisCheck", CONFIG.AimbotVisible, function(v) CONFIG.AimbotVisible = v end, 8)
+
     local kaCard = CreateCard(CombatTab, "Kill Aura")
     CreateToggle(kaCard, "Enable Kill Aura", "KillAura", CONFIG.KillAuraEnabled, function(v) CONFIG.KillAuraEnabled = v end, 1)
     CreateSlider(kaCard, "Range", 5, 100, CONFIG.KillAuraRange, "s", function(v) CONFIG.KillAuraRange = v end, 2)
+    CreateSlider(kaCard, "Delay", 1, 50, math.floor(CONFIG.KillAuraDelay*100), "ms", function(v) CONFIG.KillAuraDelay = v/100 end, 3)
 
-    -- Visuals
+    local tbCard = CreateCard(CombatTab, "Triggerbot")
+    CreateToggle(tbCard, "Enable Triggerbot", "Triggerbot", CONFIG.TriggerbotEnabled, function(v) CONFIG.TriggerbotEnabled = v end, 1)
+
+    -- VISUALS
     local espCard = CreateCard(VisualsTab, "ESP")
     CreateToggle(espCard, "Enable ESP", "ESP", CONFIG.ESPEnabled, function(v) CONFIG.ESPEnabled = v end, 1)
     CreateToggle(espCard, "Box", "ESPBox", CONFIG.ESPBox, function(v) CONFIG.ESPBox = v end, 2)
-    CreateToggle(espCard, "Name", "ESPName", CONFIG.ESPName, function(v) CONFIG.ESPName = v end, 3)
-    CreateToggle(espCard, "Health", "ESPHealth", CONFIG.ESPHealth, function(v) CONFIG.ESPHealth = v end, 4)
+    CreateToggle(espCard, "Health", "ESPHealth", CONFIG.ESPHealth, function(v) CONFIG.ESPHealth = v end, 3)
+    CreateToggle(espCard, "Name", "ESPName", CONFIG.ESPName, function(v) CONFIG.ESPName = v end, 4)
+    CreateToggle(espCard, "Distance", "ESPDistance", CONFIG.ESPDistance, function(v) CONFIG.ESPDistance = v end, 5)
+    CreateToggle(espCard, "Skeleton", "ESPSkeleton", CONFIG.ESPSkeleton, function(v) CONFIG.ESPSkeleton = v end, 6)
+    CreateToggle(espCard, "Weapon", "ESPWeapon", CONFIG.ESPWeapon, function(v) CONFIG.ESPWeapon = v end, 7)
+    CreateToggle(espCard, "Tracer", "ESPTracer", CONFIG.ESPTracer, function(v) CONFIG.ESPTracer = v end, 8)
+    CreateToggle(espCard, "Head Dot", "ESPHeadDot", CONFIG.ESPHeadDot, function(v) CONFIG.ESPHeadDot = v end, 9)
+    CreateSlider(espCard, "Max Distance", 100, 3000, CONFIG.ESPMaxDist, "m", function(v) CONFIG.ESPMaxDist = v end, 10)
 
-    -- Cosmetics
+    local chamsCard = CreateCard(VisualsTab, "Chams")
+    CreateToggle(chamsCard, "Enemy Chams", "ChamsEnemy", CONFIG.ChamsEnemy, function(v) CONFIG.ChamsEnemy = v end, 1)
+    CreateToggle(chamsCard, "Self Chams", "ChamsSelf", CONFIG.ChamsSelf, function(v) CONFIG.ChamsSelf = v end, 2)
+    CreateToggle(chamsCard, "Rainbow", "ChamsRainbow", CONFIG.ChamsRainbow, function(v) CONFIG.ChamsRainbow = v end, 3)
+
+    local worldCard = CreateCard(VisualsTab, "World")
+    CreateToggle(worldCard, "Fullbright", "Fullbright", CONFIG.Fullbright, function(v)
+        CONFIG.Fullbright = v
+        if v then Lighting.Brightness = 3; Lighting.Ambient = Color3.fromRGB(180,180,180); Lighting.OutdoorAmbient = Color3.fromRGB(180,180,180)
+        else Lighting.Brightness = State.OriginalLighting.Brightness; Lighting.Ambient = State.OriginalLighting.Ambient; Lighting.OutdoorAmbient = State.OriginalLighting.OutdoorAmbient end
+    end, 1)
+    CreateToggle(worldCard, "No Fog", "NoFog", CONFIG.NoFog, function(v) CONFIG.NoFog = v; Lighting.FogEnd = v and 100000 or State.OriginalLighting.FogEnd end, 2)
+
+    -- COSMETICS
     local cosCard = CreateCard(CosmeticsTab, "Cosmetics")
     CreateToggle(cosCard, "Halo", "Halo", CONFIG.HaloEnabled, function(v) CONFIG.HaloEnabled = v end, 1)
     CreateToggle(cosCard, "Wings", "Wings", CONFIG.WingsEnabled, function(v) CONFIG.WingsEnabled = v end, 2)
@@ -516,46 +615,123 @@ local function BuildUI()
     CreateToggle(cosCard, "Ground Circle", "Circle", CONFIG.GroundCircle, function(v) CONFIG.GroundCircle = v end, 4)
     CreateToggle(cosCard, "Orbit", "Orbit", CONFIG.OrbitEnabled, function(v) CONFIG.OrbitEnabled = v end, 5)
 
-    -- Movement
+    -- MOVEMENT
     local flyCard = CreateCard(MovementTab, "Flight")
     CreateToggle(flyCard, "Fly", "Fly", CONFIG.FlyEnabled, function(v) CONFIG.FlyEnabled = v; if not v then StopFly() end end, 1)
     CreateSlider(flyCard, "Fly Speed", 20, 300, CONFIG.FlySpeed, "", function(v) CONFIG.FlySpeed = v end, 2)
     CreateToggle(flyCard, "Noclip", "Noclip", CONFIG.NoclipEnabled, function(v) CONFIG.NoclipEnabled = v end, 3)
     CreateToggle(flyCard, "Speed", "Speed", CONFIG.SpeedEnabled, function(v) CONFIG.SpeedEnabled = v end, 4)
+    CreateSlider(flyCard, "WalkSpeed", 16, 200, CONFIG.WalkSpeed, "", function(v) CONFIG.WalkSpeed = v end, 5)
+    CreateSlider(flyCard, "JumpPower", 50, 300, CONFIG.JumpPower, "", function(v) CONFIG.JumpPower = v end, 6)
+    CreateToggle(flyCard, "Infinite Jump", "InfJump", CONFIG.InfiniteJump, function(v) CONFIG.InfiniteJump = v end, 7)
+    CreateToggle(flyCard, "Auto Wallhop", "Wallhop", CONFIG.AutoWallhop, function(v) CONFIG.AutoWallhop = v end, 8)
+    CreateToggle(flyCard, "Click TP", "ClickTP", CONFIG.ClickTPEnabled, function(v) CONFIG.ClickTPEnabled = v end, 9)
+    CreateToggle(flyCard, "Stand (Follow)", "Stand", CONFIG.StandEnabled, function(v) CONFIG.StandEnabled = v end, 10)
 
-    -- Troll
-    local trollCard = CreateCard(TrollTab, "Troll")
-    CreateToggle(trollCard, "Auto Fling", "Fling", CONFIG.FlingEnabled, function(v) CONFIG.FlingEnabled = v end, 1)
-    CreateToggle(trollCard, "Invisible", "Invisible", CONFIG.InvisibleEnabled, function(v) CONFIG.InvisibleEnabled = v; if v then ApplyGhost() else RestoreVis() end end, 2)
+    -- TROLL
+    local flingCard = CreateCard(TrollTab, "Fling")
+    CreateToggle(flingCard, "Auto Fling", "Fling", CONFIG.FlingEnabled, function(v) CONFIG.FlingEnabled = v end, 1)
+    CreateSlider(flingCard, "Fling Range", 5, 100, CONFIG.FlingRange, "s", function(v) CONFIG.FlingRange = v end, 2)
+    CreateButton(flingCard, "Fling Everyone", function()
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then ForceFling(p.Character) end
+        end
+        Notify("Everyone flung!", 2)
+    end, 3)
 
-    -- Configs
+    local invisCard = CreateCard(TrollTab, "Invisible")
+    CreateToggle(invisCard, "Ghost Invisible", "Invisible", CONFIG.InvisibleEnabled, function(v)
+        CONFIG.InvisibleEnabled = v
+        if v then ApplyGhost() else RestoreVis() end
+    end, 1)
+
+    local emoteCard = CreateCard(TrollTab, "Emotes")
+    local function PlayEmoteNearest(animId, name)
+        local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not myRoot then return end
+        local closest, minD = nil, math.huge
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then
+                local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    local d = (hrp.Position - myRoot.Position).Magnitude
+                    if d < minD then minD = d; closest = p.Character end
+                end
+            end
+        end
+        if closest then
+            local hum = closest:FindFirstChildOfClass("Humanoid")
+            if hum then
+                local animator = hum:FindFirstChildOfClass("Animator") or hum
+                pcall(function()
+                    local a = Instance.new("Animation")
+                    a.AnimationId = "rbxassetid://" .. animId
+                    animator:LoadAnimation(a):Play()
+                end)
+                Notify(name .. " on " .. closest.Name, 2)
+            end
+        end
+    end
+    CreateButton(emoteCard, "Bang Nearest", function() PlayEmoteNearest("5269855227", "Bang") end, 1)
+    CreateButton(emoteCard, "Dance Nearest", function() PlayEmoteNearest("507771019", "Dance") end, 2)
+    CreateButton(emoteCard, "Laugh Nearest", function() PlayEmoteNearest("507770818", "Laugh") end, 3)
+
+    -- MUSIC
+    local songsCard = CreateCard(MusicTab, "Songs")
+    CreateButton(songsCard, "Megalovania", function() Notify("Song system ready", 1.5) end, 1)
+    CreateButton(songsCard, "Coffin Dance", function() Notify("Song system ready", 1.5) end, 2)
+
+    -- CONFIGS
     local confCard = CreateCard(SettingsTab, "Config System")
-    local nameBox = Create("TextBox", { Parent = confCard, Size = UDim2.new(1,0,0,30), BackgroundColor3 = Color3.fromRGB(30,30,40), Text = "my_config", Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = CONFIG.Text, BorderSizePixel = 0, PlaceholderText = "Config Name..." }, { Corner(6) })
-    
+    if makefolder and not isfolder(CONFIG_FOLDER) then makefolder(CONFIG_FOLDER) end
+    local nameBox = Create("TextBox", { Parent = confCard, Size = UDim2.new(1,0,0,30), BackgroundColor3 = Color3.fromRGB(30,30,40), Text = "default", Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = CONFIG.Text, BorderSizePixel = 0, PlaceholderText = "Config name..." }, { Corner(6) })
+
+    local listFrame = Create("Frame", { Parent = confCard, Size = UDim2.new(1,0,0,120), BackgroundColor3 = Color3.fromRGB(22,22,28), BorderSizePixel = 0 }, { Corner(6) })
+    local listLayout = Create("UIListLayout", { Parent = listFrame, Padding = UDim.new(0,4) })
+
+    local function refreshConfigList()
+        for _, v in ipairs(listFrame:GetChildren()) do
+            if v:IsA("TextButton") then v:Destroy() end
+        end
+        if listfiles and isfolder(CONFIG_FOLDER) then
+            for _, file in ipairs(listfiles(CONFIG_FOLDER)) do
+                local name = file:gsub(CONFIG_FOLDER.."/", ""):gsub("%.json", "")
+                local btn = Create("TextButton", { Parent = listFrame, Size = UDim2.new(1,0,0,24), BackgroundColor3 = Color3.fromRGB(35,35,45), Text = name, Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = CONFIG.Text, BorderSizePixel = 0, LayoutOrder = 1 }, { Corner(4) })
+                btn.MouseButton1Click:Connect(function()
+                    nameBox.Text = name
+                end)
+            end
+        end
+    end
+
     local saveBtn = Create("TextButton", { Parent = confCard, Size = UDim2.new(1,0,0,30), BackgroundColor3 = Color3.fromRGB(30,30,40), Text = "Save Config", Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = CONFIG.Text, BorderSizePixel = 0 }, { Corner(6) })
     saveBtn.MouseButton1Click:Connect(function()
         if writefile then
             local data = HttpService:JSONEncode({CONFIG = CONFIG, BINDS = BINDS})
-            writefile(nameBox.Text .. ".json", data)
-            Notify("Config Saved: " .. nameBox.Text, 2)
+            writefile(CONFIG_FOLDER.."/"..nameBox.Text..".json", data)
+            Notify("Saved: "..nameBox.Text, 2)
+            refreshConfigList()
         else
             Notify("writefile not supported", 2)
         end
     end)
-    
+
     local loadBtn = Create("TextButton", { Parent = confCard, Size = UDim2.new(1,0,0,30), BackgroundColor3 = Color3.fromRGB(30,30,40), Text = "Load Config", Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = CONFIG.Text, BorderSizePixel = 0 }, { Corner(6) })
     loadBtn.MouseButton1Click:Connect(function()
-        if readfile and isfile and isfile(nameBox.Text .. ".json") then
-            local data = HttpService:JSONDecode(readfile(nameBox.Text .. ".json"))
+        local path = CONFIG_FOLDER.."/"..nameBox.Text..".json"
+        if readfile and isfile and isfile(path) then
+            local data = HttpService:JSONDecode(readfile(path))
             if data.CONFIG then for k, v in pairs(data.CONFIG) do if CONFIG[k] ~= nil then CONFIG[k] = v end end end
             if data.BINDS then for k, v in pairs(data.BINDS) do if BINDS[k] ~= nil then BINDS[k] = v end end end
-            Notify("Config Loaded! Rejoin to apply fully.", 3)
+            Notify("Loaded: "..nameBox.Text, 3)
         else
             Notify("Config not found", 2)
         end
     end)
 
-    -- Открытие меню
+    refreshConfigList()
+
+    -- OPEN
     Pages["Home"].Visible = true
     Tabs["Home"].btn.TextColor3 = CONFIG.Accent
     Tabs["Home"].btn.BackgroundTransparency = 0.15
@@ -564,7 +740,7 @@ local function BuildUI()
     menu.Visible = true
     TweenService:Create(menu, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = UDim2.new(0.5, -320, 0.5, -230) }):Play()
 
-    -- Перетаскивание
+    -- DRAG
     local drag, dragStart, startPos
     header.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then drag = true; dragStart = i.Position; startPos = menu.Position end end)
     Track(UserInputService.InputChanged:Connect(function(i) if drag and i.UserInputType == Enum.UserInputType.MouseMovement then local d = i.Position - dragStart; menu.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset+d.X, startPos.Y.Scale, startPos.Y.Offset+d.Y) end end))
@@ -575,7 +751,6 @@ end
 -- LOOPS & HOTKEYS
 -- ============================================================
 Track(UserInputService.InputBegan:Connect(function(input, gp)
-    -- Логика привязки колесиком
     if State.WaitingForBind then
         State.WaitingForBind(input.KeyCode)
         return
@@ -583,8 +758,6 @@ Track(UserInputService.InputBegan:Connect(function(input, gp)
 
     if gp or UserInputService:GetFocusedTextBox() then return end
     local k = input.KeyCode
-    
-    -- Только если нажата реальная клавиша, а не Unknown
     if k == Enum.KeyCode.Unknown then return end
 
     if k == BINDS.ToggleMenu and State.menuFrame then
@@ -596,16 +769,17 @@ Track(UserInputService.InputBegan:Connect(function(input, gp)
             m.Visible = true
             TweenService:Create(m, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = UDim2.new(0.5, -320, 0.5, -230) }):Play()
         end
-    elseif k == BINDS.Fly then CONFIG.FlyEnabled = not CONFIG.FlyEnabled; if not CONFIG.FlyEnabled then StopFly() end; Notify("Fly: " .. (CONFIG.FlyEnabled and "ON" or "OFF"), 1.5)
-    elseif k == BINDS.Noclip then CONFIG.NoclipEnabled = not CONFIG.NoclipEnabled; Notify("Noclip: " .. (CONFIG.NoclipEnabled and "ON" or "OFF"), 1.5)
-    elseif k == BINDS.Speed then CONFIG.SpeedEnabled = not CONFIG.SpeedEnabled; Notify("Speed: " .. (CONFIG.SpeedEnabled and "ON" or "OFF"), 1.5)
-    elseif k == BINDS.Aimbot then CONFIG.AimbotEnabled = not CONFIG.AimbotEnabled; Notify("Aimbot: " .. (CONFIG.AimbotEnabled and "ON" or "OFF"), 1.5)
-    elseif k == BINDS.KillAura then CONFIG.KillAuraEnabled = not CONFIG.KillAuraEnabled; Notify("KillAura: " .. (CONFIG.KillAuraEnabled and "ON" or "OFF"), 1.5)
-    elseif k == BINDS.Fling then CONFIG.FlingEnabled = not CONFIG.FlingEnabled; Notify("Fling: " .. (CONFIG.FlingEnabled and "ON" or "OFF"), 1.5)
-    elseif k == BINDS.Invisible then CONFIG.InvisibleEnabled = not CONFIG.InvisibleEnabled; if CONFIG.InvisibleEnabled then ApplyGhost() else RestoreVis() end; Notify("Invisible: " .. (CONFIG.InvisibleEnabled and "ON" or "OFF"), 1.5)
+    elseif k == BINDS.Fly then CONFIG.FlyEnabled = not CONFIG.FlyEnabled; if not CONFIG.FlyEnabled then StopFly() end; Notify("Fly: "..(CONFIG.FlyEnabled and "ON" or "OFF"), 1.5)
+    elseif k == BINDS.Noclip then CONFIG.NoclipEnabled = not CONFIG.NoclipEnabled; Notify("Noclip: "..(CONFIG.NoclipEnabled and "ON" or "OFF"), 1.5)
+    elseif k == BINDS.Speed then CONFIG.SpeedEnabled = not CONFIG.SpeedEnabled; Notify("Speed: "..(CONFIG.SpeedEnabled and "ON" or "OFF"), 1.5)
+    elseif k == BINDS.Aimbot then CONFIG.AimbotEnabled = not CONFIG.AimbotEnabled; Notify("Aimbot: "..(CONFIG.AimbotEnabled and "ON" or "OFF"), 1.5)
+    elseif k == BINDS.KillAura then CONFIG.KillAuraEnabled = not CONFIG.KillAuraEnabled; Notify("KillAura: "..(CONFIG.KillAuraEnabled and "ON" or "OFF"), 1.5)
+    elseif k == BINDS.Fling then CONFIG.FlingEnabled = not CONFIG.FlingEnabled; Notify("Fling: "..(CONFIG.FlingEnabled and "ON" or "OFF"), 1.5)
+    elseif k == BINDS.Invisible then CONFIG.InvisibleEnabled = not CONFIG.InvisibleEnabled; if CONFIG.InvisibleEnabled then ApplyGhost() else RestoreVis() end; Notify("Invisible: "..(CONFIG.InvisibleEnabled and "ON" or "OFF"), 1.5)
     end
 end))
 
+-- MOVEMENT LOOP
 Track(RunService.Stepped:Connect(function(_, dt)
     if not State.Running then return end
     local char = LocalPlayer.Character
@@ -621,7 +795,26 @@ Track(RunService.Stepped:Connect(function(_, dt)
         for _, v in ipairs(char:GetDescendants()) do if v:IsA("BasePart") then v.CanCollide = false end end
     end
 
+    if CONFIG.InvisibleEnabled then ApplyGhost() end
+
     if CONFIG.InfiniteJump and UserInputService:IsKeyDown(Enum.KeyCode.Space) then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+
+    if CONFIG.AutoWallhop and UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+        if tick() - State.WallhopCooldown > 0.15 then
+            local state = hum:GetState()
+            if state == Enum.HumanoidStateType.Running or state == Enum.HumanoidStateType.Freefall then
+                local params = RaycastParams.new()
+                params.FilterDescendantsInstances = {char}
+                params.FilterType = Enum.RaycastFilterType.Exclude
+                local ray = Workspace:Raycast(hrp.Position, hrp.CFrame.LookVector * 3.5, params)
+                if ray then
+                    hum:ChangeState(Enum.HumanoidStateType.Jumping)
+                    hrp.AssemblyLinearVelocity = Vector3.new(hrp.AssemblyLinearVelocity.X, 55, hrp.AssemblyLinearVelocity.Z)
+                    State.WallhopCooldown = tick()
+                end
+            end
+        end
+    end
 
     if CONFIG.FlyEnabled then
         local cam = Workspace.CurrentCamera
@@ -644,7 +837,22 @@ Track(RunService.Stepped:Connect(function(_, dt)
             bg.CFrame = cam.CFrame
         end
     end
-    
+
+    if CONFIG.KillAuraEnabled and tick() - State.KillAuraCooldown > CONFIG.KillAuraDelay then
+        State.KillAuraCooldown = tick()
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then
+                local tHrp = p.Character:FindFirstChild("HumanoidRootPart")
+                if tHrp and (tHrp.Position - hrp.Position).Magnitude < CONFIG.KillAuraRange then
+                    local tool = char:FindFirstChildOfClass("Tool")
+                    if tool then pcall(function() tool:Activate() end) end
+                    local tHum = p.Character:FindFirstChildOfClass("Humanoid")
+                    if tHum then pcall(function() tHum.Health = 0 end) end
+                end
+            end
+        end
+    end
+
     if CONFIG.FlingEnabled then
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= LocalPlayer and p.Character then
@@ -653,46 +861,208 @@ Track(RunService.Stepped:Connect(function(_, dt)
             end
         end
     end
+
+    if CONFIG.StandEnabled and State.StandTarget and State.StandTarget.Parent then
+        local tHrp = State.StandTarget:FindFirstChild("HumanoidRootPart")
+        if tHrp then hrp.CFrame = tHrp.CFrame * CFrame.new(0, 0, -3) end
+    end
 end))
 
+-- ESP LOOP (with cleanup)
+local espTick = 0
 Track(RunService.Heartbeat:Connect(function()
     if not State.Running then return end
+    espTick += 1
+    if espTick % 2 ~= 0 then return end
+
     UpdateCosmetics()
-    
-    if not CONFIG.ESPEnabled then return end
+
+    if not CONFIG.ESPEnabled then
+        for p in pairs(State.ESPCache) do RemoveESPForPlayer(p) end
+        return
+    end
+
     local cam = Workspace.CurrentCamera
+    if not cam then return end
+    local myChar = LocalPlayer.Character
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    local active = {}
+
     for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character then
+        if p ~= LocalPlayer and p.Character and p.Character.Parent then
             local char = p.Character
             local hum = char:FindFirstChildOfClass("Humanoid")
             local hrp = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
-            if hum and hum.Health > 0 and hrp then
-                local sp, on = cam:WorldToViewportPoint(hrp.Position)
-                if on and not State.ESPCache[p] then
-                    State.ESPCache[p] = { box = TrackD(Draw("Square")), name = TrackD(Draw("Text")) }
-                end
-                local t = State.ESPCache[p]
-                if t and on then
-                    t.box.Visible = CONFIG.ESPBox
-                    t.box.Size = Vector2.new(50, 70)
-                    t.box.Position = Vector2.new(sp.X - 25, sp.Y - 35)
-                    t.box.Color = CONFIG.Accent
-                    t.name.Visible = CONFIG.ESPName
-                    t.name.Text = p.Name
-                    t.name.Position = Vector2.new(sp.X, sp.Y - 50)
-                    t.name.Color = CONFIG.Accent
-                    t.name.Center = true
-                    t.name.Outline = true
-                elseif t then
-                    t.box.Visible = false; t.name.Visible = false
+            local head = char:FindFirstChild("Head")
+            if hum and hum.Health > 0 and hrp and head then
+                local dist = myRoot and (hrp.Position - myRoot.Position).Magnitude or 0
+                if dist <= CONFIG.ESPMaxDist then
+                    active[p] = true
+                    local t = State.ESPCache[p]
+                    if not t then
+                        t = {
+                            box = TrackD(Draw("Square")),
+                            name = TrackD(Draw("Text")),
+                            dist = TrackD(Draw("Text")),
+                            hpBg = TrackD(Draw("Square")),
+                            hpBar = TrackD(Draw("Square")),
+                            tracer = TrackD(Draw("Line")),
+                            headDot = TrackD(Draw("Circle")),
+                            weapon = TrackD(Draw("Text")),
+                            skel = {},
+                        }
+                        for i = 1, 6 do t.skel[i] = TrackD(Draw("Line")) end
+                        State.ESPCache[p] = t
+                    end
+
+                    local hSp, hOn = cam:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
+                    local rSp, rOn = cam:WorldToViewportPoint(hrp.Position)
+
+                    if hOn and rOn then
+                        local h = math.abs(rSp.Y - hSp.Y)
+                        local w = h * 0.55
+                        local bx = hSp.X - w/2
+                        local by = hSp.Y
+
+                        t.box.Visible = CONFIG.ESPBox
+                        t.box.Position = Vector2.new(bx, by)
+                        t.box.Size = Vector2.new(w, h)
+                        t.box.Color = CONFIG.Accent
+                        t.box.Thickness = 1
+                        t.box.Filled = false
+
+                        if CONFIG.ESPHealth then
+                            local r = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
+                            t.hpBg.Visible = true
+                            t.hpBg.Position = Vector2.new(bx - 6, by)
+                            t.hpBg.Size = Vector2.new(3, h)
+                            t.hpBg.Color = Color3.fromRGB(25, 25, 30)
+                            t.hpBg.Filled = true
+                            t.hpBar.Visible = true
+                            t.hpBar.Position = Vector2.new(bx - 6, by + h * (1 - r))
+                            t.hpBar.Size = Vector2.new(3, h * r)
+                            t.hpBar.Color = Color3.fromRGB(255 * (1 - r), 255 * r, 80)
+                            t.hpBar.Filled = true
+                        else
+                            t.hpBg.Visible = false
+                            t.hpBar.Visible = false
+                        end
+
+                        if CONFIG.ESPName then
+                            t.name.Visible = true
+                            t.name.Text = p.Name
+                            t.name.Position = Vector2.new(bx + w/2, by - 16)
+                            t.name.Size = 13
+                            t.name.Color = CONFIG.Accent
+                            t.name.Center = true
+                            t.name.Outline = true
+                        else t.name.Visible = false end
+
+                        if CONFIG.ESPDistance then
+                            t.dist.Visible = true
+                            t.dist.Text = math.floor(dist) .. "m"
+                            t.dist.Position = Vector2.new(bx + w/2, by + h + 2)
+                            t.dist.Size = 11
+                            t.dist.Color = Color3.fromRGB(200,200,210)
+                            t.dist.Center = true
+                            t.dist.Outline = true
+                        else t.dist.Visible = false end
+
+                        if CONFIG.ESPTracer then
+                            t.tracer.Visible = true
+                            t.tracer.From = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y)
+                            t.tracer.To = Vector2.new(rSp.X, rSp.Y)
+                            t.tracer.Color = CONFIG.Accent
+                            t.tracer.Thickness = 1
+                        else t.tracer.Visible = false end
+
+                        if CONFIG.ESPHeadDot then
+                            t.headDot.Visible = true
+                            t.headDot.Position = Vector2.new(hSp.X, hSp.Y)
+                            t.headDot.Radius = 3
+                            t.headDot.Color = CONFIG.Accent2
+                        else t.headDot.Visible = false end
+
+                        if CONFIG.ESPWeapon then
+                            local tool = char:FindFirstChildOfClass("Tool")
+                            if tool then
+                                t.weapon.Visible = true
+                                t.weapon.Text = tool.Name
+                                t.weapon.Position = Vector2.new(bx + w/2, by + h + 16)
+                                t.weapon.Size = 10
+                                t.weapon.Color = Color3.fromRGB(180,180,190)
+                                t.weapon.Center = true
+                                t.weapon.Outline = true
+                            else t.weapon.Visible = false end
+                        else t.weapon.Visible = false end
+
+                        if CONFIG.ESPSkeleton then
+                            local bones = {
+                                {head, char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")},
+                                {char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso"), char:FindFirstChild("LowerTorso") or char:FindFirstChild("Torso")},
+                                {char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso"), char:FindFirstChild("LeftUpperArm") or char:FindFirstChild("Left Arm")},
+                                {char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso"), char:FindFirstChild("RightUpperArm") or char:FindFirstChild("Right Arm")},
+                                {char:FindFirstChild("LowerTorso") or char:FindFirstChild("Torso"), char:FindFirstChild("LeftUpperLeg") or char:FindFirstChild("Left Leg")},
+                                {char:FindFirstChild("LowerTorso") or char:FindFirstChild("Torso"), char:FindFirstChild("RightUpperLeg") or char:FindFirstChild("Right Leg")},
+                            }
+                            for i, pair in ipairs(bones) do
+                                local line = t.skel[i]
+                                local a, b = pair[1], pair[2]
+                                if a and b and a.Parent and b.Parent then
+                                    local sa, oa = cam:WorldToViewportPoint(a.Position)
+                                    local sb, ob = cam:WorldToViewportPoint(b.Position)
+                                    if oa and ob then
+                                        line.Visible = true
+                                        line.From = Vector2.new(sa.X, sa.Y)
+                                        line.To = Vector2.new(sb.X, sb.Y)
+                                        line.Color = Color3.fromRGB(255,255,255)
+                                        line.Thickness = 1
+                                    else line.Visible = false end
+                                else line.Visible = false end
+                            end
+                        else for i = 1, 6 do t.skel[i].Visible = false end end
+
+                        if CONFIG.ChamsEnemy then ApplyChams(char) else RemoveChams(char) end
+                    else
+                        for _, v in pairs(t) do
+                            if typeof(v) == "table" then for _, l in pairs(v) do pcall(function() l.Visible = false end) end
+                            else pcall(function() v.Visible = false end) end
+                        end
+                    end
                 end
             end
         end
     end
+
+    for p, t in pairs(State.ESPCache) do
+        if not active[p] then
+            RemoveESPForPlayer(p)
+            if p.Character then RemoveChams(p.Character) end
+        end
+    end
 end))
 
+-- CLEANUP EVENTS
+Track(Players.PlayerRemoving:Connect(function(player) RemoveESPForPlayer(player) end))
+Track(Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function(char)
+        local hum = char:WaitForChild("Humanoid", 5)
+        if hum then
+            hum.Died:Connect(function() RemoveESPForPlayer(player) end)
+        end
+    end)
+end))
+Track(LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    if not State.Running then return end
+    for p in pairs(State.ESPCache) do RemoveESPForPlayer(p) end
+    pcall(BuildCosmetics)
+    if CONFIG.InvisibleEnabled then ApplyGhost() end
+end))
+
+-- INIT
 task.spawn(function()
     pcall(BuildCosmetics)
     pcall(BuildUI)
-    print("[Celestial] v8.5 Loaded.")
+    print("[Celestial] v"..VERSION.." Loaded. Binds: H = Menu, Middle Click on bind button = rebind.")
 end)
