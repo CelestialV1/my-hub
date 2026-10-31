@@ -1,4 +1,6 @@
-print("CELESTIAL v8.0 — BINDS & CONFIG UPDATE")
+-- ============================================================
+-- CELESTIAL v8.5 — FULL UI + BINDS + CONFIGS + FIXES
+-- ============================================================
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -9,31 +11,36 @@ local Debris = game:GetService("Debris")
 local Stats = game:GetService("Stats")
 local Lighting = game:GetService("Lighting")
 local HttpService = game:GetService("HttpService")
+local VIM = game:GetService("VirtualInputManager")
 local LocalPlayer = Players.LocalPlayer
 
 local CELESTIAL_ASSET = "rbxassetid://94872985442978"
-local VERSION = "8.0"
+local VERSION = "8.5"
 
 -- ============================================================
 -- CONFIG & BINDS
 -- ============================================================
 local CONFIG = {
-    Accent = Color3.fromRGB(160, 110, 255),
-    Accent2 = Color3.fromRGB(255, 100, 200),
-    Bg = Color3.fromRGB(8, 8, 12),
-    CardBg = Color3.fromRGB(18, 18, 24),
-    Text = Color3.fromRGB(240, 240, 250),
+    Accent   = Color3.fromRGB(160, 110, 255),
+    Accent2  = Color3.fromRGB(255, 100, 200),
+    Bg       = Color3.fromRGB(8, 8, 12),
+    CardBg   = Color3.fromRGB(18, 18, 24),
+    Text     = Color3.fromRGB(240, 240, 250),
     TextDark = Color3.fromRGB(140, 140, 160),
-    
-    AimbotEnabled = false, AimbotKey = Enum.KeyCode.E,
-    AimbotFOV = 200, AimbotSmooth = 0.35, AimbotPart = "Head",
-    AimbotAutoFire = false, AimbotVisible = false,
+    GUIFont  = Enum.Font.Gotham,
+
+    AimbotEnabled = false, AimbotFOV = 200, AimbotSmooth = 0.35, AimbotPart = "Head",
+    AimbotPredict = 0.15, AimbotAutoFire = false, AimbotVisible = false,
     KillAuraEnabled = false, KillAuraRange = 25, KillAuraDelay = 0.1,
-    
+    TriggerbotEnabled = false,
+
     ESPEnabled = true, ESPBox = true, ESPHealth = true,
     ESPName = true, ESPDistance = true, ESPSkeleton = true,
     ESPWeapon = true, ESPTracer = true, ESPHeadDot = true,
-    ESPMaxDist = 1500,
+    ESPMaxDist = 1500, ESPFont = Drawing.Fonts.Plex,
+
+    ChamsEnemy = false, ChamsSelf = false, ChamsRainbow = false,
+    ChamsColor = Color3.fromRGB(160, 110, 255),
 
     WingsEnabled = false, CrownEnabled = false, HaloEnabled = false,
     AuraEnabled = false, OrbitEnabled = false, GroundCircle = false,
@@ -42,20 +49,27 @@ local CONFIG = {
 
     FlyEnabled = false, FlySpeed = 60, NoclipEnabled = false,
     SpeedEnabled = false, WalkSpeed = 50, JumpPower = 50,
-    InfiniteJump = false,
+    InfiniteJump = false, AutoWallhop = false,
+    StandEnabled = false, ClickTPEnabled = false,
+
+    FlingEnabled = false, FlingRange = 25,
+    InvisibleEnabled = false,
 }
 
--- Здесь хранятся бинды для функций (можно менять)
+-- По умолчанию все бинды пустые, кроме меню
 local BINDS = {
+    ToggleMenu = Enum.KeyCode.H,
     Fly = Enum.KeyCode.Unknown,
     Noclip = Enum.KeyCode.Unknown,
     Speed = Enum.KeyCode.Unknown,
-    ESP = Enum.KeyCode.Unknown,
     Aimbot = Enum.KeyCode.Unknown,
     KillAura = Enum.KeyCode.Unknown,
     Fling = Enum.KeyCode.Unknown,
+    Stand = Enum.KeyCode.Unknown,
     Invisible = Enum.KeyCode.Unknown,
-    Menu = Enum.KeyCode.H
+    ClickTP = Enum.KeyCode.Unknown,
+    Triggerbot = Enum.KeyCode.Unknown,
+    Unload = Enum.KeyCode.Unknown,
 }
 
 local State = {
@@ -65,15 +79,28 @@ local State = {
     ESPCache = {},
     ChamsCache = {},
     ThemeObjects = {},
+    SearchWidgets = {},
     Cosmetics = {},
+    StandTarget = nil,
     menuFrame = nil,
     mainGui = nil,
-    WaitingForBind = nil, -- Для окна привязки
+    PlayingSong = false,
+    WallhopCooldown = 0,
+    KillAuraCooldown = 0,
+    TriggerbotCooldown = 0,
+    WaitingForBind = nil,
+    OriginalLighting = {
+        Brightness = Lighting.Brightness,
+        FogEnd = Lighting.FogEnd,
+        Ambient = Lighting.Ambient,
+        OutdoorAmbient = Lighting.OutdoorAmbient,
+    },
 }
 
 local function Track(c) if State.Running and c then table.insert(State.Connections, c) end return c end
 local function TrackD(d) if State.Running and d then table.insert(State.Drawings, d) end return d end
 local function RegisterTheme(o) if State.Running then table.insert(State.ThemeObjects, o) end return o end
+local function RegisterSearch(w) if State.Running then table.insert(State.SearchWidgets, w) end end
 
 local Draw = Drawing.new
 local FOVCircle = TrackD(Draw("Circle"))
@@ -121,7 +148,7 @@ local function Notify(text, duration)
 end
 
 -- ============================================================
--- COSMETICS (Fixed Wings & Crown)
+-- COSMETICS (Fixed Crown, Wings, Circle)
 -- ============================================================
 local function BuildCosmetics()
     if not State.Cosmetics.Halo then
@@ -141,7 +168,7 @@ local function BuildCosmetics()
         c.CanCollide = false; c.CanQuery = false; c.Anchored = true
         local mesh = Instance.new("SpecialMesh", c)
         mesh.MeshType = Enum.MeshType.FileMesh
-        mesh.MeshId = "rbxassetid://176213013" -- Классическая корона
+        mesh.MeshId = "rbxassetid://176213013"
         mesh.Scale = Vector3.new(0.9,0.9,0.9)
         State.Cosmetics.Crown = c
     end
@@ -156,9 +183,20 @@ local function BuildCosmetics()
         end
         State.Cosmetics.Wings = m
     end
+    if not State.Cosmetics.Orbit then
+        local m = Instance.new("Model", Workspace); m.Name = "Celestial_Orbit"
+        for _ = 1, 3 do
+            local r = Instance.new("Part", m)
+            r.Name = "OrbitRing"; r.Shape = Enum.PartType.Cylinder
+            r.Size = Vector3.new(0.1,8,8); r.Material = Enum.Material.Neon
+            r.Color = CONFIG.Accent; r.Transparency = 0.4
+            r.CanCollide = false; r.CanQuery = false; r.Anchored = true
+        end
+        State.Cosmetics.Orbit = m
+    end
     if not State.Cosmetics.GroundCircle then
         local gc = Instance.new("Part", Workspace); gc.Name = "Celestial_GroundCircle"
-        gc.Shape = Enum.PartType.Cylinder; gc.Size = Vector3.new(0.1, 10, 10)
+        gc.Shape = Enum.PartType.Cylinder; gc.Size = Vector3.new(0.1,10,10)
         gc.Material = Enum.Material.Neon; gc.Color = CONFIG.Accent
         gc.Transparency = 0.5; gc.CanCollide = false; gc.CanQuery = false
         gc.Anchored = true
@@ -202,8 +240,8 @@ local function UpdateCosmetics()
                     local p = parts[idx]; idx += 1
                     if p then
                         local s = i/8
-                        p.CFrame = hrp.CFrame * CFrame.new(side*(0.5+s*3.5), 1+s*3, -0.5-s*1)
-                        p.Size = Vector3.new(0.2,0.2,0.2)
+                        -- Фикс позиции крыльев
+                        p.CFrame = hrp.CFrame * CFrame.new(side*(0.5+s*2), 1+s*1.5, -1) * CFrame.Angles(0, math.rad(side*45), 0)
                         p.Color = Color3.fromHSV((t*0.3 + i*0.1) % 1, 0.8, 1)
                         p.Transparency = 0
                     end
@@ -211,10 +249,24 @@ local function UpdateCosmetics()
             end
         end
     end
+    if State.Cosmetics.Orbit and hrp then
+        State.Cosmetics.Orbit.Parent = CONFIG.OrbitEnabled and Workspace or nil
+        if CONFIG.OrbitEnabled then
+            for i, r in ipairs(State.Cosmetics.Orbit:GetChildren()) do
+                local a = t*(1+i*0.3) + i*(math.pi*2/3)
+                local rad = 4 + math.sin(t*2+i)*1
+                -- Фикс орбиты (крутится вокруг)
+                r.CFrame = CFrame.new(hrp.Position + Vector3.new(math.cos(a)*rad, math.sin(t*1.5+i)*1.5, math.sin(a)*rad)) * CFrame.Angles(0, 0, math.rad(90))
+                r.Color = Color3.fromHSV((t*0.2 + i*0.3) % 1, 0.8, 1)
+                r.Transparency = 0.3 + math.sin(t*3+i)*0.2
+            end
+        end
+    end
     if State.Cosmetics.GroundCircle and hrp then
         State.Cosmetics.GroundCircle.Parent = CONFIG.GroundCircle and Workspace or nil
         if CONFIG.GroundCircle then
-            State.Cosmetics.GroundCircle.CFrame = CFrame.new(hrp.Position - Vector3.new(0, hrp.Size.Y/2 + 0.1, 0)) * CFrame.Angles(math.rad(90), 0, 0)
+            -- Фикс круга на земле
+            State.Cosmetics.GroundCircle.CFrame = CFrame.new(hrp.Position - Vector3.new(0, 3, 0)) * CFrame.Angles(0, 0, math.rad(90))
             State.Cosmetics.GroundCircle.Color = CONFIG.Accent
             State.Cosmetics.GroundCircle.Transparency = 0.5 + math.sin(t*3)*0.1
         end
@@ -222,7 +274,7 @@ local function UpdateCosmetics()
 end
 
 -- ============================================================
--- CHAMS & ESP
+-- CHAMS & MOVEMENT FIXES
 -- ============================================================
 local function ApplyChams(char)
     if not char then return end
@@ -234,20 +286,19 @@ local function ApplyChams(char)
         hl.FillTransparency = 0.5
         hl.OutlineTransparency = 0
     end
-    hl.FillColor = CONFIG.ChamsRainbow and Color3.fromHSV(tick() % 1, 1, 1) or CONFIG.Accent
+    hl.FillColor = CONFIG.ChamsRainbow and Color3.fromHSV(tick() % 1, 1, 1) or CONFIG.ChamsColor
     hl.OutlineColor = hl.FillColor
+    State.ChamsCache[char] = hl
 end
 
 local function RemoveChams(char)
     if char then
         local hl = char:FindFirstChild("Celestial_Chams")
         if hl then hl:Destroy() end
+        State.ChamsCache[char] = nil
     end
 end
 
--- ============================================================
--- MOVEMENT / TROLL FIX (Убрал сломанную физику)
--- ============================================================
 local function StopFly()
     local char = LocalPlayer.Character
     if not char then return end
@@ -257,8 +308,6 @@ local function StopFly()
             if c.Name == "Celestial_FlyBV" or c.Name == "Celestial_FlyBG" then c:Destroy() end
         end
     end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if hum then hum.PlatformStand = false end
 end
 
 local function ForceFling(char)
@@ -266,7 +315,7 @@ local function ForceFling(char)
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
     pcall(function()
-        -- Убрал смену состояния, чтобы не ломать звуки
+        -- Безопасный флинг без Physics состояния
         local bv = Instance.new("BodyVelocity", hrp)
         bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
         bv.Velocity = Vector3.new(1e5, 1e5, 1e5)
@@ -323,27 +372,46 @@ local function BuildUI()
 
     local header = Create("Frame", { Parent = menu, Size = UDim2.new(1,0,0,62), BackgroundTransparency = 1, ZIndex = 3 })
     
-    -- Title and Close
-    Create("TextLabel", { Parent = header, Size = UDim2.new(0,200,0,22), Position = UDim2.new(0,20,0,12), BackgroundTransparency = 1, Text = "Celestial v"..VERSION, Font = Enum.Font.GothamBold, TextSize = 18, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4 })
+    Create("TextLabel", { Parent = header, Size = UDim2.new(0,200,0,22), Position = UDim2.new(0,66,0,12), BackgroundTransparency = 1, Text = "Celestial", Font = Enum.Font.GothamBold, TextSize = 18, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4 })
+    Create("TextLabel", { Parent = header, Size = UDim2.new(0,260,0,16), Position = UDim2.new(0,66,0,34), BackgroundTransparency = 1, Text = "v" .. VERSION .. " | Premium", Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = CONFIG.Accent, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4 })
+
     local closeBtn = Create("TextButton", { Parent = header, Size = UDim2.new(0,32,0,32), Position = UDim2.new(1,-46,0.5,-16), BackgroundColor3 = Color3.fromRGB(35,35,45), Text = "×", Font = Enum.Font.GothamBold, TextSize = 22, TextColor3 = CONFIG.TextDark, BorderSizePixel = 0, AutoButtonColor = false, ZIndex = 4 }, { Corner(10) })
     closeBtn.MouseButton1Click:Connect(function()
         TweenService:Create(menu, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Position = UDim2.new(0.5, -320, 1, 500) }):Play()
         task.wait(0.3); menu.Visible = false
     end)
 
-    -- Sidebar
-    local sidebar = Create("Frame", { Parent = menu, Size = UDim2.new(0,160,1,-80), Position = UDim2.new(0,20,0,72), BackgroundTransparency = 1, ZIndex = 3 })
+    local searchFrame = Create("Frame", { Parent = menu, Size = UDim2.new(1,-40,0,32), Position = UDim2.new(0,20,0,72), BackgroundColor3 = CONFIG.CardBg, BackgroundTransparency = 0.3, BorderSizePixel = 0, ZIndex = 3 }, { Corner(8) })
+    local searchBox = Create("TextBox", { Parent = searchFrame, Size = UDim2.new(1,-40,1,0), Position = UDim2.new(0,32,0,0), BackgroundTransparency = 1, Text = "", PlaceholderText = "Search functions...", Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = CONFIG.Text, PlaceholderColor3 = CONFIG.TextDark, ClearTextOnFocus = false, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4 })
+    searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+        local q = searchBox.Text:lower()
+        for _, w in ipairs(State.SearchWidgets) do
+            if w.row and w.row.Parent then w.row.Visible = (q == "" or w.text:find(q, 1, true) ~= nil) end
+        end
+    end)
+
+    local sidebar = Create("Frame", { Parent = menu, Size = UDim2.new(0,160,1,-130), Position = UDim2.new(0,20,0,116), BackgroundTransparency = 1, ZIndex = 3 })
     Create("UIListLayout", { Parent = sidebar, Padding = UDim.new(0,6) })
-    local content = Create("Frame", { Parent = menu, Size = UDim2.new(1,-200,1,-80), Position = UDim2.new(0,180,0,72), BackgroundTransparency = 1, ZIndex = 3 })
+    local content = Create("Frame", { Parent = menu, Size = UDim2.new(1,-200,1,-130), Position = UDim2.new(0,180,0,116), BackgroundTransparency = 1, ZIndex = 3 })
 
     local Pages = {}
-    local function CreateTab(name, icon)
-        local btn = Create("TextButton", { Parent = sidebar, Size = UDim2.new(1,0,0,36), BackgroundColor3 = Color3.fromRGB(24,24,32), BackgroundTransparency = 0.4, Text = "  "..icon.."   "..name, Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = CONFIG.TextDark, TextXAlignment = Enum.TextXAlignment.Left, BorderSizePixel = 0, AutoButtonColor = false, ZIndex = 4 }, { Corner(8) })
+    local Tabs = {}
+
+    local function CreateTab(name, icon, order)
+        local btn = Create("TextButton", { Parent = sidebar, Size = UDim2.new(1,0,0,36), BackgroundColor3 = Color3.fromRGB(24,24,32), BackgroundTransparency = 0.4, Text = "  " .. icon .. "   " .. name, Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = CONFIG.TextDark, TextXAlignment = Enum.TextXAlignment.Left, BorderSizePixel = 0, LayoutOrder = order, AutoButtonColor = false, ZIndex = 4 }, { Corner(8) })
+        local stroke = Create("UIStroke", { Parent = btn, Color = CONFIG.Accent, Thickness = 1, Transparency = 1 })
         local page = Create("ScrollingFrame", { Parent = content, Size = UDim2.new(1,0,1,0), BackgroundTransparency = 1, Visible = false, ScrollBarThickness = 2, ScrollBarImageColor3 = CONFIG.Accent, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(0,0,0,0), BorderSizePixel = 0, ZIndex = 3 })
         Create("UIListLayout", { Parent = page, Padding = UDim.new(0,10) })
-        Pages[name] = { btn = btn, page = page }
+
+        Pages[name] = page
+        Tabs[name] = { btn = btn, stroke = stroke }
+
         btn.MouseButton1Click:Connect(function()
-            for n, p in pairs(Pages) do p.page.Visible = (n == name); TweenService:Create(p.btn, TweenInfo.new(0.2), { TextColor3 = (n == name) and CONFIG.Accent or CONFIG.TextDark }):Play() end
+            for n, p in pairs(Pages) do p.Visible = (n == name) end
+            for n, t2 in pairs(Tabs) do
+                TweenService:Create(t2.btn, TweenInfo.new(0.2), { TextColor3 = (n == name) and CONFIG.Accent or CONFIG.TextDark, BackgroundTransparency = (n == name) and 0.15 or 0.4 }):Play()
+                TweenService:Create(t2.stroke, TweenInfo.new(0.2), { Transparency = (n == name) and 0.4 or 1 }):Play()
+            end
         end)
         return page
     end
@@ -357,27 +425,29 @@ local function BuildUI()
         return card
     end
 
-    -- Функция создания тумблера с привязкой
-    local function CreateToggle(parent, text, key, default, cb)
-        local row = Create("Frame", { Parent = parent, Size = UDim2.new(1,0,0,28), BackgroundTransparency = 1 })
+    -- Модифицированные функции с биндами (Клик колесиком)
+    local function CreateToggle(parent, text, bindKey, default, cb, order)
+        local row = Create("Frame", { Parent = parent, Size = UDim2.new(1,0,0,28), BackgroundTransparency = 1, LayoutOrder = order or 1 })
         
-        -- Кнопка бинда
-        local bindBtn = Create("TextButton", { Parent = row, Size = UDim2.new(0,50,0,20), Position = UDim2.new(1,-70,0.5,-10), BackgroundColor3 = Color3.fromRGB(35,35,45), Text = BINDS[key] and BINDS[key].Name or "None", Font = Enum.Font.Gotham, TextSize = 10, TextColor3 = CONFIG.TextDark, BorderSizePixel = 0, ZIndex = 6 }, { Corner(4) })
-        bindBtn.MouseButton1Click:Connect(function()
-            if State.WaitingForBind then return end
-            bindBtn.Text = "..."
-            State.WaitingForBind = function(kc)
-                BINDS[key] = kc
-                bindBtn.Text = kc.Name
-                State.WaitingForBind = nil
-                Notify("Binded "..text.." to "..kc.Name, 1.5)
+        local bindBtn = Create("TextButton", { Parent = row, Size = UDim2.new(0,50,0,20), Position = UDim2.new(1,-70,0.5,-10), BackgroundColor3 = Color3.fromRGB(35,35,45), Text = BINDS[bindKey] and BINDS[bindKey].Name or "None", Font = Enum.Font.Gotham, TextSize = 10, TextColor3 = CONFIG.TextDark, BorderSizePixel = 0, ZIndex = 6 }, { Corner(4) })
+        bindBtn.MouseButton1Click:Connect(function() end) -- Поглотитель
+        bindBtn.InputBegan:Connect(function(i)
+            if i.UserInputType == Enum.UserInputType.MouseButton3 then
+                if State.WaitingForBind then return end
+                bindBtn.Text = "..."
+                State.WaitingForBind = function(kc)
+                    BINDS[bindKey] = kc
+                    bindBtn.Text = kc.Name
+                    State.WaitingForBind = nil
+                    Notify("Binded "..text.." to "..kc.Name, 1.5)
+                end
             end
         end)
 
+        local label = Create("TextLabel", { Parent = row, Size = UDim2.new(1,-120,1,0), BackgroundTransparency = 1, Text = text, Font = Enum.Font.Gotham, TextSize = 13, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 5 })
         local sw = Create("Frame", { Parent = row, Size = UDim2.new(0,28,0,14), Position = UDim2.new(1,-28,0.5,-7), BackgroundColor3 = default and CONFIG.Accent or Color3.fromRGB(40,40,50), BorderSizePixel = 0, ZIndex = 5 }, { Corner(7) })
         local kn = Create("Frame", { Parent = sw, Size = UDim2.new(0,10,0,10), Position = default and UDim2.new(1,-12,0.5,-5) or UDim2.new(0,2,0.5,-5), BackgroundColor3 = Color3.new(1,1,1), BorderSizePixel = 0, ZIndex = 6 }, { Corner(5) })
-        local label = Create("TextLabel", { Parent = row, Size = UDim2.new(1,-120,1,0), BackgroundTransparency = 1, Text = text, Font = Enum.Font.Gotham, TextSize = 13, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 5 })
-        
+
         local state = default
         local click = Create("TextButton", { Parent = row, Size = UDim2.new(1,0,1,0), BackgroundTransparency = 1, Text = "", ZIndex = 7 })
         click.MouseButton1Click:Connect(function()
@@ -386,81 +456,126 @@ local function BuildUI()
             TweenService:Create(kn, TweenInfo.new(0.2), { Position = state and UDim2.new(1,-12,0.5,-5) or UDim2.new(0,2,0.5,-5) }):Play()
             cb(state)
         end)
+        RegisterSearch({ row = row, text = text:lower() })
+    end
+
+    local function CreateSlider(parent, text, min, max, default, suffix, cb, order)
+        local row = Create("Frame", { Parent = parent, Size = UDim2.new(1,0,0,44), BackgroundTransparency = 1, LayoutOrder = order or 1 })
+        Create("TextLabel", { Parent = row, Size = UDim2.new(1,-60,0,18), BackgroundTransparency = 1, Text = text, Font = Enum.Font.Gotham, TextSize = 13, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 5 })
+        local val = Create("TextLabel", { Parent = row, Size = UDim2.new(0,60,0,18), Position = UDim2.new(1,-60,0,0), BackgroundTransparency = 1, Text = tostring(default) .. (suffix or ""), Font = Enum.Font.GothamMedium, TextSize = 13, TextColor3 = CONFIG.Accent, TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 5 })
+
+        local track = Create("Frame", { Parent = row, Size = UDim2.new(1,0,0,3), Position = UDim2.new(0,0,1,-10), BackgroundColor3 = Color3.fromRGB(30,30,40), BorderSizePixel = 0, ZIndex = 5 }, { Corner(2) })
+        local fill = Create("Frame", { Parent = track, Size = UDim2.new((default-min)/(max-min),0,1,0), BackgroundColor3 = CONFIG.Accent, BorderSizePixel = 0, ZIndex = 6 }, { Corner(2) })
+        local knob = Create("Frame", { Parent = track, Size = UDim2.new(0,10,0,10), Position = UDim2.new((default-min)/(max-min),-5,0.5,-5), BackgroundColor3 = Color3.new(1,1,1), BorderSizePixel = 0, ZIndex = 7 }, { Corner(5) })
+
+        local hit = Create("TextButton", { Parent = row, Size = UDim2.new(1,0,0,18), Position = UDim2.new(0,0,1,-16), BackgroundTransparency = 1, Text = "", ZIndex = 8 })
+        local drag = false
+        local function update(x)
+            local rel = math.clamp((x - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
+            local v = math.floor(min + (max - min) * rel)
+            fill.Size = UDim2.new(rel,0,1,0); knob.Position = UDim2.new(rel,-5,0.5,-5)
+            val.Text = tostring(v) .. (suffix or ""); cb(v)
+        end
+        hit.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then drag = true; update(i.Position.X) end end)
+        Track(UserInputService.InputChanged:Connect(function(i) if drag and i.UserInputType == Enum.UserInputType.MouseMovement then update(i.Position.X) end end))
+        Track(UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then drag = false end end))
+        RegisterSearch({ row = row, text = text:lower() })
     end
 
     -- Вкладки
-    local MainTab = CreateTab("Main", "🏠")
-    local CombatTab = CreateTab("Combat", "⚔️")
-    local VisualTab = CreateTab("Visuals", "👁️")
-    local CosmeticsTab = CreateTab("Cosmetics", "✨")
-    local SettingsTab = CreateTab("Configs", "⚙️")
-
-    -- Main / Movement
-    local moveCard = CreateCard(MainTab, "Movement")
-    CreateToggle(moveCard, "Fly", "Fly", CONFIG.FlyEnabled, function(v) CONFIG.FlyEnabled = v; if not v then StopFly() end end)
-    CreateToggle(moveCard, "Noclip", "Noclip", CONFIG.NoclipEnabled, function(v) CONFIG.NoclipEnabled = v end)
-    CreateToggle(moveCard, "Speed", "Speed", CONFIG.SpeedEnabled, function(v) CONFIG.SpeedEnabled = v end)
-    CreateToggle(moveCard, "Infinite Jump", "InfiniteJump", CONFIG.InfiniteJump, function(v) CONFIG.InfiniteJump = v end)
+    local HomeTab = CreateTab("Home", "🏠", 1)
+    local CombatTab = CreateTab("Combat", "⚔️", 2)
+    local VisualsTab = CreateTab("Visuals", "👁️", 3)
+    local CosmeticsTab = CreateTab("Cosmetics", "✨", 4)
+    local MovementTab = CreateTab("Movement", "🏃", 5)
+    local TrollTab = CreateTab("Troll", "😈", 6)
+    local SettingsTab = CreateTab("Configs", "⚙️", 7)
 
     -- Combat
-    local combatCard = CreateCard(CombatTab, "Combat")
-    CreateToggle(combatCard, "Aimbot", "Aimbot", CONFIG.AimbotEnabled, function(v) CONFIG.AimbotEnabled = v end)
-    CreateToggle(combatCard, "Kill Aura", "KillAura", CONFIG.KillAuraEnabled, function(v) CONFIG.KillAuraEnabled = v end)
-    CreateToggle(combatCard, "Fling", "Fling", false, function(v) CONFIG.FlingEnabled = v end)
+    local aimCard = CreateCard(CombatTab, "Aimbot")
+    CreateToggle(aimCard, "Enable Aimbot", "Aimbot", CONFIG.AimbotEnabled, function(v) CONFIG.AimbotEnabled = v end, 1)
+    CreateSlider(aimCard, "FOV Radius", 20, 600, CONFIG.AimbotFOV, "px", function(v) CONFIG.AimbotFOV = v; FOVCircle.Radius = v end, 2)
+    CreateSlider(aimCard, "Smoothness", 5, 100, math.floor(CONFIG.AimbotSmooth * 100), "%", function(v) CONFIG.AimbotSmooth = v/100 end, 3)
+    
+    local kaCard = CreateCard(CombatTab, "Kill Aura")
+    CreateToggle(kaCard, "Enable Kill Aura", "KillAura", CONFIG.KillAuraEnabled, function(v) CONFIG.KillAuraEnabled = v end, 1)
+    CreateSlider(kaCard, "Range", 5, 100, CONFIG.KillAuraRange, "s", function(v) CONFIG.KillAuraRange = v end, 2)
 
     -- Visuals
-    local visCard = CreateCard(VisualTab, "ESP")
-    CreateToggle(visCard, "Enable ESP", "ESP", CONFIG.ESPEnabled, function(v) CONFIG.ESPEnabled = v end)
-    CreateToggle(visCard, "Box", "ESPBox", CONFIG.ESPBox, function(v) CONFIG.ESPBox = v end)
-    CreateToggle(visCard, "Name", "ESPName", CONFIG.ESPName, function(v) CONFIG.ESPName = v end)
-    CreateToggle(visCard, "Health", "ESPHealth", CONFIG.ESPHealth, function(v) CONFIG.ESPHealth = v end)
+    local espCard = CreateCard(VisualsTab, "ESP")
+    CreateToggle(espCard, "Enable ESP", "ESP", CONFIG.ESPEnabled, function(v) CONFIG.ESPEnabled = v end, 1)
+    CreateToggle(espCard, "Box", "ESPBox", CONFIG.ESPBox, function(v) CONFIG.ESPBox = v end, 2)
+    CreateToggle(espCard, "Name", "ESPName", CONFIG.ESPName, function(v) CONFIG.ESPName = v end, 3)
+    CreateToggle(espCard, "Health", "ESPHealth", CONFIG.ESPHealth, function(v) CONFIG.ESPHealth = v end, 4)
 
     -- Cosmetics
-    local cosCard = CreateCard(CosmeticsTab, "Auras & Cosmetics")
-    CreateToggle(cosCard, "Halo", "Halo", CONFIG.HaloEnabled, function(v) CONFIG.HaloEnabled = v end)
-    CreateToggle(cosCard, "Wings", "Wings", CONFIG.WingsEnabled, function(v) CONFIG.WingsEnabled = v end)
-    CreateToggle(cosCard, "Crown", "Crown", CONFIG.CrownEnabled, function(v) CONFIG.CrownEnabled = v end)
-    CreateToggle(cosCard, "Ground Circle", "Circle", CONFIG.GroundCircle, function(v) CONFIG.GroundCircle = v end)
+    local cosCard = CreateCard(CosmeticsTab, "Cosmetics")
+    CreateToggle(cosCard, "Halo", "Halo", CONFIG.HaloEnabled, function(v) CONFIG.HaloEnabled = v end, 1)
+    CreateToggle(cosCard, "Wings", "Wings", CONFIG.WingsEnabled, function(v) CONFIG.WingsEnabled = v end, 2)
+    CreateToggle(cosCard, "Crown", "Crown", CONFIG.CrownEnabled, function(v) CONFIG.CrownEnabled = v end, 3)
+    CreateToggle(cosCard, "Ground Circle", "Circle", CONFIG.GroundCircle, function(v) CONFIG.GroundCircle = v end, 4)
+    CreateToggle(cosCard, "Orbit", "Orbit", CONFIG.OrbitEnabled, function(v) CONFIG.OrbitEnabled = v end, 5)
+
+    -- Movement
+    local flyCard = CreateCard(MovementTab, "Flight")
+    CreateToggle(flyCard, "Fly", "Fly", CONFIG.FlyEnabled, function(v) CONFIG.FlyEnabled = v; if not v then StopFly() end end, 1)
+    CreateSlider(flyCard, "Fly Speed", 20, 300, CONFIG.FlySpeed, "", function(v) CONFIG.FlySpeed = v end, 2)
+    CreateToggle(flyCard, "Noclip", "Noclip", CONFIG.NoclipEnabled, function(v) CONFIG.NoclipEnabled = v end, 3)
+    CreateToggle(flyCard, "Speed", "Speed", CONFIG.SpeedEnabled, function(v) CONFIG.SpeedEnabled = v end, 4)
+
+    -- Troll
+    local trollCard = CreateCard(TrollTab, "Troll")
+    CreateToggle(trollCard, "Auto Fling", "Fling", CONFIG.FlingEnabled, function(v) CONFIG.FlingEnabled = v end, 1)
+    CreateToggle(trollCard, "Invisible", "Invisible", CONFIG.InvisibleEnabled, function(v) CONFIG.InvisibleEnabled = v; if v then ApplyGhost() else RestoreVis() end end, 2)
 
     -- Configs
     local confCard = CreateCard(SettingsTab, "Config System")
+    local nameBox = Create("TextBox", { Parent = confCard, Size = UDim2.new(1,0,0,30), BackgroundColor3 = Color3.fromRGB(30,30,40), Text = "my_config", Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = CONFIG.Text, BorderSizePixel = 0, PlaceholderText = "Config Name..." }, { Corner(6) })
+    
     local saveBtn = Create("TextButton", { Parent = confCard, Size = UDim2.new(1,0,0,30), BackgroundColor3 = Color3.fromRGB(30,30,40), Text = "Save Config", Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = CONFIG.Text, BorderSizePixel = 0 }, { Corner(6) })
     saveBtn.MouseButton1Click:Connect(function()
-        local data = HttpService:JSONEncode(CONFIG)
         if writefile then
-            writefile("CelestialConfig.json", data)
-            Notify("Config Saved!", 2)
+            local data = HttpService:JSONEncode({CONFIG = CONFIG, BINDS = BINDS})
+            writefile(nameBox.Text .. ".json", data)
+            Notify("Config Saved: " .. nameBox.Text, 2)
         else
-            Notify("Executor does not support writefile", 2)
+            Notify("writefile not supported", 2)
         end
     end)
     
     local loadBtn = Create("TextButton", { Parent = confCard, Size = UDim2.new(1,0,0,30), BackgroundColor3 = Color3.fromRGB(30,30,40), Text = "Load Config", Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = CONFIG.Text, BorderSizePixel = 0 }, { Corner(6) })
     loadBtn.MouseButton1Click:Connect(function()
-        if readfile and isfile and isfile("CelestialConfig.json") then
-            local data = readfile("CelestialConfig.json")
-            local loaded = HttpService:JSONDecode(data)
-            for k, v in pairs(loaded) do
-                if CONFIG[k] ~= nil then CONFIG[k] = v end
-            end
-            Notify("Config Loaded! Please rejoin or reset.", 3)
+        if readfile and isfile and isfile(nameBox.Text .. ".json") then
+            local data = HttpService:JSONDecode(readfile(nameBox.Text .. ".json"))
+            if data.CONFIG then for k, v in pairs(data.CONFIG) do if CONFIG[k] ~= nil then CONFIG[k] = v end end end
+            if data.BINDS then for k, v in pairs(data.BINDS) do if BINDS[k] ~= nil then BINDS[k] = v end end end
+            Notify("Config Loaded! Rejoin to apply fully.", 3)
         else
-            Notify("Config file not found.", 2)
+            Notify("Config not found", 2)
         end
     end)
 
-    -- Открытие меню на H
-    Pages["Main"].page.Visible = true
-    Pages["Main"].btn.TextColor3 = CONFIG.Accent
+    -- Открытие меню
+    Pages["Home"].Visible = true
+    Tabs["Home"].btn.TextColor3 = CONFIG.Accent
+    Tabs["Home"].btn.BackgroundTransparency = 0.15
+    Tabs["Home"].stroke.Transparency = 0.4
+
     menu.Visible = true
     TweenService:Create(menu, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = UDim2.new(0.5, -320, 0.5, -230) }):Play()
+
+    -- Перетаскивание
+    local drag, dragStart, startPos
+    header.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then drag = true; dragStart = i.Position; startPos = menu.Position end end)
+    Track(UserInputService.InputChanged:Connect(function(i) if drag and i.UserInputType == Enum.UserInputType.MouseMovement then local d = i.Position - dragStart; menu.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset+d.X, startPos.Y.Scale, startPos.Y.Offset+d.Y) end end))
+    Track(UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then drag = false end end))
 end
 
 -- ============================================================
 -- LOOPS & HOTKEYS
 -- ============================================================
 Track(UserInputService.InputBegan:Connect(function(input, gp)
-    -- Обработка привязки клавиши
+    -- Логика привязки колесиком
     if State.WaitingForBind then
         State.WaitingForBind(input.KeyCode)
         return
@@ -468,9 +583,11 @@ Track(UserInputService.InputBegan:Connect(function(input, gp)
 
     if gp or UserInputService:GetFocusedTextBox() then return end
     local k = input.KeyCode
+    
+    -- Только если нажата реальная клавиша, а не Unknown
+    if k == Enum.KeyCode.Unknown then return end
 
-    -- Открытие меню на H
-    if k == BINDS.Menu and State.menuFrame then
+    if k == BINDS.ToggleMenu and State.menuFrame then
         local m = State.menuFrame
         if m.Visible then
             TweenService:Create(m, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Position = UDim2.new(0.5, -320, 1, 500) }):Play()
@@ -479,17 +596,14 @@ Track(UserInputService.InputBegan:Connect(function(input, gp)
             m.Visible = true
             TweenService:Create(m, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = UDim2.new(0.5, -320, 0.5, -230) }):Play()
         end
-        return
+    elseif k == BINDS.Fly then CONFIG.FlyEnabled = not CONFIG.FlyEnabled; if not CONFIG.FlyEnabled then StopFly() end; Notify("Fly: " .. (CONFIG.FlyEnabled and "ON" or "OFF"), 1.5)
+    elseif k == BINDS.Noclip then CONFIG.NoclipEnabled = not CONFIG.NoclipEnabled; Notify("Noclip: " .. (CONFIG.NoclipEnabled and "ON" or "OFF"), 1.5)
+    elseif k == BINDS.Speed then CONFIG.SpeedEnabled = not CONFIG.SpeedEnabled; Notify("Speed: " .. (CONFIG.SpeedEnabled and "ON" or "OFF"), 1.5)
+    elseif k == BINDS.Aimbot then CONFIG.AimbotEnabled = not CONFIG.AimbotEnabled; Notify("Aimbot: " .. (CONFIG.AimbotEnabled and "ON" or "OFF"), 1.5)
+    elseif k == BINDS.KillAura then CONFIG.KillAuraEnabled = not CONFIG.KillAuraEnabled; Notify("KillAura: " .. (CONFIG.KillAuraEnabled and "ON" or "OFF"), 1.5)
+    elseif k == BINDS.Fling then CONFIG.FlingEnabled = not CONFIG.FlingEnabled; Notify("Fling: " .. (CONFIG.FlingEnabled and "ON" or "OFF"), 1.5)
+    elseif k == BINDS.Invisible then CONFIG.InvisibleEnabled = not CONFIG.InvisibleEnabled; if CONFIG.InvisibleEnabled then ApplyGhost() else RestoreVis() end; Notify("Invisible: " .. (CONFIG.InvisibleEnabled and "ON" or "OFF"), 1.5)
     end
-
-    -- Проверка остальных биндов
-    if k == BINDS.Fly then CONFIG.FlyEnabled = not CONFIG.FlyEnabled; if not CONFIG.FlyEnabled then StopFly() end; Notify("Fly: "..tostring(CONFIG.FlyEnabled), 1) end
-    if k == BINDS.Noclip then CONFIG.NoclipEnabled = not CONFIG.NoclipEnabled; Notify("Noclip: "..tostring(CONFIG.NoclipEnabled), 1) end
-    if k == BINDS.Speed then CONFIG.SpeedEnabled = not CONFIG.SpeedEnabled; Notify("Speed: "..tostring(CONFIG.SpeedEnabled), 1) end
-    if k == BINDS.ESP then CONFIG.ESPEnabled = not CONFIG.ESPEnabled; Notify("ESP: "..tostring(CONFIG.ESPEnabled), 1) end
-    if k == BINDS.Aimbot then CONFIG.AimbotEnabled = not CONFIG.AimbotEnabled; Notify("Aimbot: "..tostring(CONFIG.AimbotEnabled), 1) end
-    if k == BINDS.KillAura then CONFIG.KillAuraEnabled = not CONFIG.KillAuraEnabled; Notify("KillAura: "..tostring(CONFIG.KillAuraEnabled), 1) end
-    if k == BINDS.Fling then CONFIG.FlingEnabled = not CONFIG.FlingEnabled; Notify("Fling: "..tostring(CONFIG.FlingEnabled), 1) end
 end))
 
 Track(RunService.Stepped:Connect(function(_, dt)
@@ -535,7 +649,7 @@ Track(RunService.Stepped:Connect(function(_, dt)
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= LocalPlayer and p.Character then
                 local tHrp = p.Character:FindFirstChild("HumanoidRootPart")
-                if tHrp and (tHrp.Position - hrp.Position).Magnitude < 25 then ForceFling(p.Character) end
+                if tHrp and (tHrp.Position - hrp.Position).Magnitude < CONFIG.FlingRange then ForceFling(p.Character) end
             end
         end
     end
@@ -544,7 +658,7 @@ end))
 Track(RunService.Heartbeat:Connect(function()
     if not State.Running then return end
     UpdateCosmetics()
-    -- Упрощенный ESP рендер
+    
     if not CONFIG.ESPEnabled then return end
     local cam = Workspace.CurrentCamera
     for _, p in ipairs(Players:GetPlayers()) do
@@ -555,10 +669,7 @@ Track(RunService.Heartbeat:Connect(function()
             if hum and hum.Health > 0 and hrp then
                 local sp, on = cam:WorldToViewportPoint(hrp.Position)
                 if on and not State.ESPCache[p] then
-                    State.ESPCache[p] = {
-                        box = TrackD(Draw("Square")),
-                        name = TrackD(Draw("Text"))
-                    }
+                    State.ESPCache[p] = { box = TrackD(Draw("Square")), name = TrackD(Draw("Text")) }
                 end
                 local t = State.ESPCache[p]
                 if t and on then
@@ -583,5 +694,5 @@ end))
 task.spawn(function()
     pcall(BuildCosmetics)
     pcall(BuildUI)
-    print("[Celestial] v8.0 Loaded.")
+    print("[Celestial] v8.5 Loaded.")
 end)
