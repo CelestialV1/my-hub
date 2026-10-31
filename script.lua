@@ -1,5 +1,5 @@
 -- ============================================================
--- CELESTIAL v11.0 — ULTIMATE UPDATE
+-- CELESTIAL v12.0 — PREMIUM VISUALS & UI
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -12,15 +12,17 @@ local Stats = game:GetService("Stats")
 local Lighting = game:GetService("Lighting")
 local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
 
 local CELESTIAL_ASSET = "rbxassetid://94872985442978"
-local VERSION = "11.0"
+local VERSION = "12.0"
 local CONFIG_FOLDER = "CelestialConfigs"
 
 local CONFIG = {
-    Accent = Color3.fromRGB(160, 110, 255), Accent2 = Color3.fromRGB(255, 100, 200),
-    Bg = Color3.fromRGB(8, 8, 12), CardBg = Color3.fromRGB(18, 18, 24),
-    Text = Color3.fromRGB(240, 240, 250), TextDark = Color3.fromRGB(140, 140, 160),
+    Accent = Color3.fromRGB(170, 120, 255), Accent2 = Color3.fromRGB(255, 120, 200),
+    Bg = Color3.fromRGB(10, 10, 15), CardBg = Color3.fromRGB(20, 20, 28),
+    Text = Color3.fromRGB(245, 245, 255), TextDark = Color3.fromRGB(150, 150, 170),
+    FOV = 70, -- Для растяга
 
     AimbotEnabled = false, AimbotKey = Enum.KeyCode.E, AimbotRMB = true,
     SilentAim = false, AimbotFOV = 200, AimbotSmooth = 0.35,
@@ -34,7 +36,7 @@ local CONFIG = {
 
     WingsEnabled = false, CrownEnabled = false, HaloEnabled = false,
     OrbitEnabled = false, PentagramEnabled = false,
-    HaloCount = 20, OrbitCount = 6,
+    HaloCount = 20,
 
     Fullbright = false, NoFog = false,
 
@@ -60,7 +62,6 @@ local State = {
 
 local function Track(c) if State.Running and c then table.insert(State.Connections, c) end return c end
 local function TrackD(d) if State.Running and d then table.insert(State.Drawings, d) end return d end
-local function RegisterSearch(w) if State.Running then table.insert(State.SearchWidgets, w) end end
 
 local Draw = Drawing.new
 local FOVCircle = TrackD(Draw("Circle"))
@@ -73,7 +74,12 @@ local function Create(c, p, ch)
     return i
 end
 local function Corner(r) return Create("UICorner", { CornerRadius = UDim.new(0, r) }) end
-local function ApplyGradient(stroke) local g = Instance.new("UIGradient"); g.Color = ColorSequence.new(CONFIG.Accent, CONFIG.Accent2); g.Rotation = 45; g.Parent = stroke end
+local function Gradient(stroke, c1, c2) 
+    local g = Instance.new("UIGradient")
+    g.Color = ColorSequence.new(c1 or CONFIG.Accent, c2 or CONFIG.Accent2)
+    g.Rotation = 45
+    g.Parent = stroke
+end
 
 -- NOTIFICATIONS
 local notifGui = Create("ScreenGui", { Name = "CelestialNotifs", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 1002, Parent = LocalPlayer:WaitForChild("PlayerGui") })
@@ -82,14 +88,14 @@ Create("UIListLayout", { Parent = notifFrame, Padding = UDim.new(0, 6) })
 local function Notify(text, duration)
     duration = duration or 2.5
     local card = Create("Frame", { Parent = notifFrame, Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = CONFIG.CardBg, BackgroundTransparency = 0.1, BorderSizePixel = 0, ZIndex = 6 }, { Corner(8) })
-    local s = Create("UIStroke", { Parent = card, Color = CONFIG.Accent, Thickness = 1, Transparency = 0.3 }); ApplyGradient(s)
+    local s = Create("UIStroke", { Parent = card, Color = CONFIG.Accent, Thickness = 1, Transparency = 0.3 }); Gradient(s)
     Create("Frame", { Parent = card, Size = UDim2.new(0, 3, 1, 0), BackgroundColor3 = CONFIG.Accent, BorderSizePixel = 0, ZIndex = 7 }, { Corner(2) })
-    Create("TextLabel", { Parent = card, Size = UDim2.new(1, -20, 1, 0), Position = UDim2.new(0, 12, 0, 0), BackgroundTransparency = 1, Text = text, Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7 })
+    Create("TextLabel", { Parent = card, Size = UDim2.new(1, -20, 1, 0), Position = UDim2.new(0, 12, 0, 0), BackgroundTransparency = 1, Text = text, Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7 })
     card.Position = UDim2.new(1, 20, 0, 0); TweenService:Create(card, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = UDim2.new(0, 0, 0, 0) }):Play()
     task.delay(duration, function() TweenService:Create(card, TweenInfo.new(0.25), { Position = UDim2.new(1, 20, 0, 0) }):Play(); task.delay(0.25, function() card:Destroy() end) end)
 end
 
--- COSMETICS
+-- COSMETICS (PREMIUM)
 local function BuildCosmetics()
     if not State.Cosmetics.Halo then
         State.Cosmetics.Halo = Instance.new("Model", Workspace); State.Cosmetics.Halo.Name = "Celestial_Halo"
@@ -101,10 +107,14 @@ local function BuildCosmetics()
     end
     if not State.Cosmetics.Wings then
         local m = Instance.new("Model", Workspace); m.Name = "Celestial_Wings"
-        local left = Instance.new("Part", m); left.Name = "LeftWing"; left.Size = Vector3.new(4, 1, 2); left.Transparency = 0; left.CanCollide = false; left.CanQuery = false; left.Anchored = false; left.Material = Enum.Material.Neon
-        local lm = Instance.new("SpecialMesh", left); lm.MeshType = Enum.MeshType.FileMesh; lm.MeshId = "rbxassetid://1553468234"; lm.Scale = Vector3.new(0.048, 0.048, 0.048)
-        local right = Instance.new("Part", m); right.Name = "RightWing"; right.Size = Vector3.new(4, 1, 2); right.Transparency = 0; right.CanCollide = false; right.CanQuery = false; right.Anchored = false; right.Material = Enum.Material.Neon
-        local rm = Instance.new("SpecialMesh", right); rm.MeshType = Enum.MeshType.FileMesh; rm.MeshId = "rbxassetid://1553468709"; rm.Scale = Vector3.new(-0.048, 0.048, 0.048) -- Исправил кривое крыло
+        local left = Instance.new("Part", m); left.Name = "LeftWing"; left.Size = Vector3.new(1, 1, 1); left.Transparency = 1; left.CanCollide = false; left.CanQuery = false; left.Anchored = false; left.Material = Enum.Material.Neon
+        local lm = Instance.new("SpecialMesh", left); lm.MeshType = Enum.MeshType.FileMesh; lm.MeshId = "rbxassetid://1553468234"; lm.Scale = Vector3.new(0.05, 0.05, 0.05)
+        local le = Instance.new("ParticleEmitter", left); le.Texture = "rbxassetid://243098098"; le.Rate = 50; le.Lifetime = NumberRange.new(0.5, 1); le.Speed = NumberRange.new(1, 3); le.SpreadAngle = Vector2.new(10, 10); le.Size = NumberSequence.new(0.5, 0)
+        
+        local right = Instance.new("Part", m); right.Name = "RightWing"; right.Size = Vector3.new(1, 1, 1); right.Transparency = 1; right.CanCollide = false; right.CanQuery = false; right.Anchored = false; right.Material = Enum.Material.Neon
+        local rm = Instance.new("SpecialMesh", right); rm.MeshType = Enum.MeshType.FileMesh; rm.MeshId = "rbxassetid://1553468709"; rm.Scale = Vector3.new(-0.05, 0.05, 0.05)
+        local re = Instance.new("ParticleEmitter", right); re.Texture = "rbxassetid://243098098"; re.Rate = 50; re.Lifetime = NumberRange.new(0.5, 1); re.Speed = NumberRange.new(1, 3); re.SpreadAngle = Vector2.new(10, 10); re.Size = NumberSequence.new(0.5, 0)
+        
         State.Cosmetics.Wings = { Left = left, Right = right, Model = m }
     end
     if not State.Cosmetics.Orbit then
@@ -112,11 +122,12 @@ local function BuildCosmetics()
     end
     if not State.Cosmetics.Pentagram then
         State.Cosmetics.Pentagram = Instance.new("Model", Workspace); State.Cosmetics.Pentagram.Name = "Celestial_Pentagram"
-        for i = 1, 5 do
+        for i = 1, 6 do
             local p = Instance.new("Part", State.Cosmetics.Pentagram)
-            p.Name = "PentagramBeam"; p.Shape = Enum.PartType.Cylinder; p.Size = Vector3.new(0.1, 0.1, 5.2)
-            p.Material = Enum.Material.Neon; p.Color = CONFIG.Accent; p.Transparency = 0.3
+            p.Name = "PentagramBeam"; p.Shape = Enum.PartType.Cylinder; p.Size = Vector3.new(0.05, 0.05, 5.2)
+            p.Material = Enum.Material.Neon; p.Color = Color3.fromRGB(255, 0, 50); p.Transparency = 0.1
             p.CanCollide = false; p.CanQuery = false; p.Anchored = true
+            local l = Instance.new("PointLight", p); l.Range = 5; l.Brightness = 2; l.Color = Color3.fromRGB(255, 0, 50)
         end
     end
 end
@@ -126,7 +137,6 @@ local function UpdateCosmetics()
     local head = char:FindFirstChild("Head"); local hrp = char:FindFirstChild("HumanoidRootPart"); local torso = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
     local t = tick()
 
-    -- Halo
     if State.Cosmetics.Halo and head then
         State.Cosmetics.Halo.Parent = CONFIG.HaloEnabled and Workspace or nil
         if CONFIG.HaloEnabled then
@@ -134,7 +144,7 @@ local function UpdateCosmetics()
             if #children ~= CONFIG.HaloCount then
                 for _, c in ipairs(children) do c:Destroy() end
                 for i = 1, CONFIG.HaloCount do
-                    local b = Instance.new("Part", State.Cosmetics.Halo); b.Name = "HaloBall"; b.Shape = Enum.PartType.Ball; b.Size = Vector3.new(0.25,0.25,0.25); b.Material = Enum.Material.Neon; b.CanCollide = false; b.CanQuery = false; b.Anchored = true
+                    local b = Instance.new("Part", State.Cosmetics.Halo); b.Name = "HaloBall"; b.Shape = Enum.PartType.Ball; b.Size = Vector3.new(0.2,0.2,0.2); b.Material = Enum.Material.Neon; b.CanCollide = false; b.CanQuery = false; b.Anchored = true
                 end
             end
             local count = CONFIG.HaloCount
@@ -146,13 +156,11 @@ local function UpdateCosmetics()
         end
     end
 
-    -- Crown
     if State.Cosmetics.Crown and head then
         State.Cosmetics.Crown.Parent = CONFIG.CrownEnabled and Workspace or nil
         if CONFIG.CrownEnabled then State.Cosmetics.Crown.CFrame = head.CFrame * CFrame.new(0,0.75,0); State.Cosmetics.Crown.Color = CONFIG.Accent end
     end
 
-    -- Wings
     if State.Cosmetics.Wings and torso then
         local w = State.Cosmetics.Wings
         w.Model.Parent = CONFIG.WingsEnabled and Workspace or nil
@@ -167,47 +175,46 @@ local function UpdateCosmetics()
                 local weld = Instance.new("WeldConstraint", rw); weld.Name = "Weld"; weld.Part0 = torso; weld.Part1 = rw
             end
             lw.Color = Color3.fromHSV(t % 1, 0.9, 1); rw.Color = Color3.fromHSV((t+0.5) % 1, 0.9, 1)
+            lw.ParticleEmitter.Color = ColorSequence.new(lw.Color); rw.ParticleEmitter.Color = ColorSequence.new(rw.Color)
         else
             for _, p in ipairs({w.Left, w.Right}) do local wc = p:FindFirstChild("Weld"); if wc then wc:Destroy() end end
         end
     end
 
-    -- Orbit (Figure-8 Loop)
     if State.Cosmetics.Orbit and hrp then
         State.Cosmetics.Orbit.Parent = CONFIG.OrbitEnabled and Workspace or nil
         if CONFIG.OrbitEnabled then
             local children = State.Cosmetics.Orbit:GetChildren()
-            if #children ~= CONFIG.OrbitCount then
+            if #children < 20 then
                 for _, c in ipairs(children) do c:Destroy() end
-                for i = 1, CONFIG.OrbitCount do
-                    local b = Instance.new("Part", State.Cosmetics.Orbit); b.Name = "OrbitBall"; b.Shape = Enum.PartType.Ball; b.Size = Vector3.new(0.4,0.4,0.4); b.Material = Enum.Material.Neon; b.CanCollide = false; b.CanQuery = false; b.Anchored = true
+                for i = 1, 20 do
+                    local b = Instance.new("Part", State.Cosmetics.Orbit); b.Shape = Enum.PartType.Ball; b.Size = Vector3.new(0.15,0.15,0.15); b.Material = Enum.Material.Neon; b.CanCollide = false; b.CanQuery = false; b.Anchored = true; b.Transparency = 0.2
+                    local l = Instance.new("PointLight", b); l.Range = 3; l.Brightness = 1
                 end
             end
-            local count = CONFIG.OrbitCount
             for i, b in ipairs(State.Cosmetics.Orbit:GetChildren()) do
-                local a = t * 2 + (i * math.pi * 2 / count)
-                local x = math.cos(a) * 3
-                local y = math.sin(a * 2) * 3 -- Figure 8 vertical loop
-                local z = math.sin(a) * 3
+                local a = t * 3 + (i * math.pi * 2 / 20)
+                local x = math.cos(a) * 2.5
+                local y = math.sin(a * 2) * 2.5
+                local z = math.sin(a) * 2.5
                 b.CFrame = hrp.CFrame * CFrame.new(x, y, z)
-                b.Color = Color3.fromHSV((t*0.2 + i/count) % 1, 0.8, 1)
+                b.Color = Color3.fromHSV((t*0.5 + i/20) % 1, 0.9, 1)
+                b.PointLight.Color = b.Color
             end
         end
     end
 
-    -- Pentagram
     if State.Cosmetics.Pentagram and hrp then
         State.Cosmetics.Pentagram.Parent = CONFIG.PentagramEnabled and Workspace or nil
         if CONFIG.PentagramEnabled then
             local center = hrp.Position - Vector3.new(0, 3, 0)
-            local radius = 4
+            local radius = 5
             local points = {}
             for i = 1, 5 do
-                local angle = math.rad(90 + (i - 1) * 72)
+                local angle = math.rad(90 + (i - 1) * 72 + t*20)
                 table.insert(points, center + Vector3.new(math.cos(angle)*radius, 0, math.sin(angle)*radius))
             end
-            -- Lines: 1-3, 3-5, 5-2, 2-4, 4-1
-            local connections = { {1,3}, {3,5}, {5,2}, {2,4}, {4,1} }
+            local connections = { {1,3}, {3,5}, {5,2}, {2,4}, {4,1}, {1,2}, {2,3}, {3,4}, {4,5}, {5,1} }
             local beams = State.Cosmetics.Pentagram:GetChildren()
             for i, conn in ipairs(connections) do
                 local p1, p2 = points[conn[1]], points[conn[2]]
@@ -216,9 +223,9 @@ local function UpdateCosmetics()
                     local mid = (p1 + p2) / 2
                     local length = (p2 - p1).Magnitude
                     beam.CFrame = CFrame.new(mid, p2) * CFrame.Angles(math.rad(90), 0, 0)
-                    beam.Size = Vector3.new(0.1, length, 0.1)
-                    beam.Color = CONFIG.Accent
-                    beam.Transparency = 0.3 + math.sin(t*3 + i)*0.2
+                    beam.Size = Vector3.new(0.05, length, 0.05)
+                    beam.Color = Color3.fromRGB(255, 0, 50)
+                    beam.Transparency = 0.2 + math.sin(t*5 + i)*0.1
                 end
             end
         end
@@ -297,11 +304,12 @@ if typeof(hookmetamethod) == "function" then
     end)
 end
 
--- HUD & QUICK BUTTONS
+-- PREMIUM HUD
 local wmGui = Create("ScreenGui", { Name = "CelestialWM", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 998, Parent = LocalPlayer:WaitForChild("PlayerGui") })
-local wmFrame = Create("Frame", { Parent = wmGui, Size = UDim2.new(0, 560, 0, 30), Position = UDim2.new(0.5, -280, 0, 12), BackgroundColor3 = CONFIG.Bg, BackgroundTransparency = 0.2, BorderSizePixel = 0, ZIndex = 3, Visible = CONFIG.ShowHUD }, { Corner(8) })
-local wmStroke = Create("UIStroke", { Parent = wmFrame, Color = CONFIG.Accent, Thickness = 1, Transparency = 0.4 }); ApplyGradient(wmStroke)
-local wmText = Create("TextLabel", { Parent = wmFrame, Size = UDim2.new(1,-20,1,0), Position = UDim2.new(0,10,0,0), BackgroundTransparency = 1, Text = "Loading...", Font = Enum.Font.GothamMedium, TextSize = 11, TextColor3 = CONFIG.Text, ZIndex = 4 })
+local wmFrame = Create("Frame", { Parent = wmGui, Size = UDim2.new(0, 650, 0, 40), Position = UDim2.new(0.5, -325, 0, 15), BackgroundColor3 = CONFIG.Bg, BackgroundTransparency = 0.1, BorderSizePixel = 0, ZIndex = 3, Visible = CONFIG.ShowHUD }, { Corner(8) })
+local wmStroke = Create("UIStroke", { Parent = wmFrame, Color = CONFIG.Accent, Thickness = 1.5, Transparency = 0.2 }); Gradient(wmStroke)
+local avatar = Create("ImageLabel", { Parent = wmFrame, Size = UDim2.new(0, 30, 0, 30), Position = UDim2.new(0, 5, 0.5, -15), BackgroundTransparency = 1, Image = "rbxthumb://type=AvatarHeadShot&id="..LocalPlayer.UserId.."&w=150&h=150" }, { Corner(15) })
+local wmText = Create("TextLabel", { Parent = wmFrame, Size = UDim2.new(1,-80,1,0), Position = UDim2.new(0,45,0,0), BackgroundTransparency = 1, Text = "Loading...", Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4 })
 
 local fps, acc = 0, 0
 Track(RunService.Heartbeat:Connect(function(dt)
@@ -311,23 +319,24 @@ Track(RunService.Heartbeat:Connect(function(dt)
         if acc >= 1 then
             local ping = "N/A"; pcall(function() ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValueString() end)
             local time = os.date("!%H:%M:%S", os.time() + (3*3600))
-            wmText.Text = string.format("✦ CELESTIAL v%s  |  %s  |  %d FPS  |  %s  |  %s", VERSION, LocalPlayer.Name, fps, ping, time)
+            wmText.Text = string.format("CELESTIAL v%s  |  %s  |  %d FPS  |  %s  |  %s", VERSION, LocalPlayer.Name, fps, ping, time)
             fps = 0; acc = 0
         end
     end
 end))
 
+-- QUICK ACTIONS
 local qaGui = Create("ScreenGui", { Name = "CelestialQA", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 997, Parent = LocalPlayer:WaitForChild("PlayerGui") })
 local qaFrame = Create("Frame", { Parent = qaGui, Size = UDim2.new(0, 110, 0, 400), Position = UDim2.new(1, -130, 0.5, -200), BackgroundTransparency = 1, Visible = CONFIG.ShowQuickButtons })
 Create("UIListLayout", { Parent = qaFrame, Padding = UDim.new(0, 6), HorizontalAlignment = Enum.HorizontalAlignment.Right })
 
 local function CreateQAButton(name, icon, cb)
-    local btn = Create("TextButton", { Parent = qaFrame, Size = UDim2.new(0, 50, 0, 50), BackgroundColor3 = CONFIG.CardBg, BackgroundTransparency = 0.15, Text = "", BorderSizePixel = 0, AutoButtonColor = false, ZIndex = 3 }, { Corner(25) })
-    local stroke = Create("UIStroke", { Parent = btn, Color = CONFIG.Accent, Thickness = 1.5, Transparency = 0.4 }); ApplyGradient(stroke)
-    Create("TextLabel", { Parent = btn, Size = UDim2.new(1,0,0,20), Position = UDim2.new(0,0,0.3,0), BackgroundTransparency = 1, Text = icon, Font = Enum.Font.GothamBold, TextSize = 18, TextColor3 = CONFIG.Text, ZIndex = 4 })
-    Create("TextLabel", { Parent = btn, Size = UDim2.new(1,0,0,10), Position = UDim2.new(0,0,0.6,0), BackgroundTransparency = 1, Text = name, Font = Enum.Font.Gotham, TextSize = 8, TextColor3 = CONFIG.TextDark, ZIndex = 4 })
+    local btn = Create("TextButton", { Parent = qaFrame, Size = UDim2.new(0, 55, 0, 55), BackgroundColor3 = CONFIG.CardBg, BackgroundTransparency = 0.1, Text = "", BorderSizePixel = 0, AutoButtonColor = false, ZIndex = 3 }, { Corner(27) })
+    local stroke = Create("UIStroke", { Parent = btn, Color = CONFIG.Accent, Thickness = 2, Transparency = 0.3 }); Gradient(stroke)
+    Create("TextLabel", { Parent = btn, Size = UDim2.new(1,0,0,20), Position = UDim2.new(0,0,0.3,0), BackgroundTransparency = 1, Text = icon, Font = Enum.Font.GothamBold, TextSize = 20, TextColor3 = CONFIG.Text, ZIndex = 4 })
+    Create("TextLabel", { Parent = btn, Size = UDim2.new(1,0,0,10), Position = UDim2.new(0,0,0.65,0), BackgroundTransparency = 1, Text = name, Font = Enum.Font.GothamBold, TextSize = 8, TextColor3 = CONFIG.TextDark, ZIndex = 4 })
     btn.MouseEnter:Connect(function() TweenService:Create(stroke, TweenInfo.new(0.15), { Transparency = 0 }):Play() end)
-    btn.MouseLeave:Connect(function() TweenService:Create(stroke, TweenInfo.new(0.15), { Transparency = 0.4 }):Play() end)
+    btn.MouseLeave:Connect(function() TweenService:Create(stroke, TweenInfo.new(0.15), { Transparency = 0.3 }):Play() end)
     btn.MouseButton1Click:Connect(cb)
 end
 
@@ -339,98 +348,91 @@ CreateQAButton("FLING", "🌀", function() CONFIG.FlingEnabled = not CONFIG.Flin
 
 -- TARGET HUD
 local targetGui = Create("ScreenGui", { Name = "CelestialTarget", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 1000, Parent = LocalPlayer:WaitForChild("PlayerGui") })
-local targetFrame = Create("Frame", { Parent = targetGui, Size = UDim2.new(0, 250, 0, 80), Position = UDim2.new(0.5, -125, 0.5, 100), BackgroundColor3 = CONFIG.Bg, BackgroundTransparency = 0.2, BorderSizePixel = 0, Visible = false }, { Corner(8) })
-local targetStroke = Create("UIStroke", { Parent = targetFrame, Color = CONFIG.Accent, Thickness = 1 }); ApplyGradient(targetStroke)
-local headImg = Create("ImageLabel", { Parent = targetFrame, Size = UDim2.new(0, 50, 0, 50), Position = UDim2.new(0, 10, 0.5, -25), BackgroundTransparency = 1, Image = "" }, { Corner(25) })
-local nameLbl = Create("TextLabel", { Parent = targetFrame, Size = UDim2.new(1, -70, 0, 20), Position = UDim2.new(0, 70, 0, 10), BackgroundTransparency = 1, Text = "", Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left })
-local hpBarBg = Create("Frame", { Parent = targetFrame, Size = UDim2.new(1, -80, 0, 8), Position = UDim2.new(0, 70, 0, 35), BackgroundColor3 = Color3.fromRGB(30,30,40), BorderSizePixel = 0 }, { Corner(4) })
-local hpBarFill = Create("Frame", { Parent = hpBarBg, Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(100, 255, 100), BorderSizePixel = 0 }, { Corner(4) })
-local wepLbl = Create("TextLabel", { Parent = targetFrame, Size = UDim2.new(1, -70, 0, 20), Position = UDim2.new(0, 70, 0, 48), BackgroundTransparency = 1, Text = "", Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = CONFIG.TextDark, TextXAlignment = Enum.TextXAlignment.Left })
+local targetFrame = Create("Frame", { Parent = targetGui, Size = UDim2.new(0, 260, 0, 85), Position = UDim2.new(0.5, -130, 0.5, 100), BackgroundColor3 = CONFIG.Bg, BackgroundTransparency = 0.1, BorderSizePixel = 0, Visible = false }, { Corner(10) })
+local targetStroke = Create("UIStroke", { Parent = targetFrame, Color = CONFIG.Accent, Thickness = 1.5, Transparency = 0.2 }); Gradient(targetStroke)
+local headImg = Create("ImageLabel", { Parent = targetFrame, Size = UDim2.new(0, 60, 0, 60), Position = UDim2.new(0, 12, 0.5, -30), BackgroundTransparency = 1, Image = "" }, { Corner(30) })
+local nameLbl = Create("TextLabel", { Parent = targetFrame, Size = UDim2.new(1, -80, 0, 20), Position = UDim2.new(0, 80, 0, 12), BackgroundTransparency = 1, Text = "", Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left })
+local hpBarBg = Create("Frame", { Parent = targetFrame, Size = UDim2.new(1, -90, 0, 10), Position = UDim2.new(0, 80, 0, 38), BackgroundColor3 = Color3.fromRGB(30,30,40), BorderSizePixel = 0 }, { Corner(5) })
+local hpBarFill = Create("Frame", { Parent = hpBarBg, Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(100, 255, 100), BorderSizePixel = 0 }, { Corner(5) })
+local wepLbl = Create("TextLabel", { Parent = targetFrame, Size = UDim2.new(1, -80, 0, 20), Position = UDim2.new(0, 80, 0, 52), BackgroundTransparency = 1, Text = "", Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = CONFIG.TextDark, TextXAlignment = Enum.TextXAlignment.Left })
 
 -- UI BUILD
 local function BuildUI()
     local gui = Create("ScreenGui", { Name = "CelestialUI", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 999, Parent = LocalPlayer:WaitForChild("PlayerGui") })
     State.mainGui = gui
 
-    local menu = Create("Frame", { Parent = gui, Size = UDim2.new(0, 640, 0, 460), Position = UDim2.new(0.5, -320, 1, 500), BackgroundColor3 = CONFIG.Bg, BackgroundTransparency = 0.02, BorderSizePixel = 0, ClipsDescendants = true, ZIndex = 2 }, { Corner(14) })
+    local menu = Create("Frame", { Parent = gui, Size = UDim2.new(0, 660, 0, 480), Position = UDim2.new(0.5, -330, 1, 500), BackgroundColor3 = CONFIG.Bg, BackgroundTransparency = 0.05, BorderSizePixel = 0, ClipsDescendants = true, ZIndex = 2 }, { Corner(16) })
     State.menuFrame = menu
-    local ms = Create("UIStroke", { Parent = menu, Thickness = 1.5, Transparency = 0.2, Color = CONFIG.Accent }); ApplyGradient(ms)
+    local ms = Create("UIStroke", { Parent = menu, Thickness = 2, Transparency = 0.1, Color = CONFIG.Accent }); Gradient(ms)
 
-    local header = Create("Frame", { Parent = menu, Size = UDim2.new(1,0,0,62), BackgroundTransparency = 1, ZIndex = 3 })
-    Create("TextLabel", { Parent = header, Size = UDim2.new(0,200,0,22), Position = UDim2.new(0,20,0,12), BackgroundTransparency = 1, Text = "Celestial", Font = Enum.Font.GothamBold, TextSize = 18, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4 })
-    Create("TextLabel", { Parent = header, Size = UDim2.new(0,260,0,16), Position = UDim2.new(0,20,0,34), BackgroundTransparency = 1, Text = "v"..VERSION.." | Premium", Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = CONFIG.Accent, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4 })
+    local header = Create("Frame", { Parent = menu, Size = UDim2.new(1,0,0,70), BackgroundTransparency = 1, ZIndex = 3 })
+    Create("TextLabel", { Parent = header, Size = UDim2.new(0,200,0,24), Position = UDim2.new(0,24,0,16), BackgroundTransparency = 1, Text = "Celestial", Font = Enum.Font.GothamBold, TextSize = 22, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4 })
+    Create("TextLabel", { Parent = header, Size = UDim2.new(0,260,0,16), Position = UDim2.new(0,24,0,42), BackgroundTransparency = 1, Text = "v"..VERSION.." | Premium", Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = CONFIG.Accent, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4 })
 
-    local closeBtn = Create("TextButton", { Parent = header, Size = UDim2.new(0,32,0,32), Position = UDim2.new(1,-46,0.5,-16), BackgroundColor3 = Color3.fromRGB(35,35,45), Text = "×", Font = Enum.Font.GothamBold, TextSize = 22, TextColor3 = CONFIG.TextDark, BorderSizePixel = 0, AutoButtonColor = false, ZIndex = 4 }, { Corner(10) })
-    closeBtn.MouseButton1Click:Connect(function() TweenService:Create(menu, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Position = UDim2.new(0.5, -320, 1, 500) }):Play(); task.wait(0.3); menu.Visible = false end)
+    local closeBtn = Create("TextButton", { Parent = header, Size = UDim2.new(0,36,0,36), Position = UDim2.new(1,-52,0.5,-18), BackgroundColor3 = Color3.fromRGB(40,40,50), Text = "×", Font = Enum.Font.GothamBold, TextSize = 24, TextColor3 = CONFIG.Text, BorderSizePixel = 0, AutoButtonColor = false, ZIndex = 4 }, { Corner(12) })
+    closeBtn.MouseButton1Click:Connect(function() TweenService:Create(menu, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Position = UDim2.new(0.5, -330, 1, 500) }):Play(); task.wait(0.3); menu.Visible = false end)
 
-    local sidebar = Create("Frame", { Parent = menu, Size = UDim2.new(0,160,1,-80), Position = UDim2.new(0,20,0,72), BackgroundTransparency = 1, ZIndex = 3 })
-    Create("UIListLayout", { Parent = sidebar, Padding = UDim.new(0,6) })
-    local content = Create("Frame", { Parent = menu, Size = UDim2.new(1,-200,1,-80), Position = UDim2.new(0,180,0,72), BackgroundTransparency = 1, ZIndex = 3 })
+    local sidebar = Create("Frame", { Parent = menu, Size = UDim2.new(0,170,1,-90), Position = UDim2.new(0,20,0,80), BackgroundTransparency = 1, ZIndex = 3 })
+    Create("UIListLayout", { Parent = sidebar, Padding = UDim.new(0,8) })
+    local content = Create("Frame", { Parent = menu, Size = UDim2.new(1,-210,1,-90), Position = UDim2.new(0,190,0,80), BackgroundTransparency = 1, ZIndex = 3 })
 
     local Pages = {}; local Tabs = {}
     local function CreateTab(name, icon, order)
-        local btn = Create("TextButton", { Parent = sidebar, Size = UDim2.new(1,0,0,36), BackgroundColor3 = Color3.fromRGB(24,24,32), BackgroundTransparency = 0.4, Text = "  " .. icon .. "   " .. name, Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = CONFIG.TextDark, TextXAlignment = Enum.TextXAlignment.Left, BorderSizePixel = 0, LayoutOrder = order, AutoButtonColor = false, ZIndex = 4 }, { Corner(8) })
+        local btn = Create("TextButton", { Parent = sidebar, Size = UDim2.new(1,0,0,38), BackgroundColor3 = Color3.fromRGB(25,25,35), BackgroundTransparency = 0.3, Text = "  " .. icon .. "   " .. name, Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = CONFIG.TextDark, TextXAlignment = Enum.TextXAlignment.Left, BorderSizePixel = 0, LayoutOrder = order, AutoButtonColor = false, ZIndex = 4 }, { Corner(8) })
         local stroke = Create("UIStroke", { Parent = btn, Color = CONFIG.Accent, Thickness = 1, Transparency = 1 })
         local page = Create("ScrollingFrame", { Parent = content, Size = UDim2.new(1,0,1,0), BackgroundTransparency = 1, Visible = false, ScrollBarThickness = 2, ScrollBarImageColor3 = CONFIG.Accent, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(0,0,0,0), BorderSizePixel = 0, ZIndex = 3 })
         Create("UIListLayout", { Parent = page, Padding = UDim.new(0,10) })
         Pages[name] = page; Tabs[name] = { btn = btn, stroke = stroke }
-        btn.MouseButton1Click:Connect(function() for n, p in pairs(Pages) do p.Visible = (n == name) end; for n, t2 in pairs(Tabs) do TweenService:Create(t2.btn, TweenInfo.new(0.2), { TextColor3 = (n == name) and CONFIG.Accent or CONFIG.TextDark, BackgroundTransparency = (n == name) and 0.15 or 0.4 }):Play(); TweenService:Create(t2.stroke, TweenInfo.new(0.2), { Transparency = (n == name) and 0.4 or 1 }):Play() end end)
+        btn.MouseButton1Click:Connect(function() for n, p in pairs(Pages) do p.Visible = (n == name) end; for n, t2 in pairs(Tabs) do TweenService:Create(t2.btn, TweenInfo.new(0.2), { TextColor3 = (n == name) and CONFIG.Accent or CONFIG.TextDark, BackgroundTransparency = (n == name) and 0.1 or 0.3 }):Play(); TweenService:Create(t2.stroke, TweenInfo.new(0.2), { Transparency = (n == name) and 0.4 or 1 }):Play() end end)
         return page
     end
 
     local function CreateCard(parent, title)
-        local card = Create("Frame", { Parent = parent, Size = UDim2.new(1,-8,0,0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = CONFIG.CardBg, BackgroundTransparency = 0.15, BorderSizePixel = 0, ZIndex = 4 }, { Corner(10) })
+        local card = Create("Frame", { Parent = parent, Size = UDim2.new(1,-8,0,0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = CONFIG.CardBg, BackgroundTransparency = 0.15, BorderSizePixel = 0, ZIndex = 4 }, { Corner(12) })
         Create("UIStroke", { Parent = card, Color = Color3.fromRGB(50,50,65), Thickness = 1, Transparency = 0.4 })
-        Create("UIPadding", { Parent = card, PaddingTop = UDim.new(0,14), PaddingBottom = UDim.new(0,14), PaddingLeft = UDim.new(0,14), PaddingRight = UDim.new(0,14) })
-        Create("UIListLayout", { Parent = card, Padding = UDim.new(0,10) })
-        if title then Create("TextLabel", { Parent = card, Size = UDim2.new(1,0,0,14), BackgroundTransparency = 1, Text = title:upper(), Font = Enum.Font.GothamMedium, TextSize = 10, TextColor3 = CONFIG.Accent, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 5 }) end
+        Create("UIPadding", { Parent = card, PaddingTop = UDim.new(0,16), PaddingBottom = UDim.new(0,16), PaddingLeft = UDim.new(0,16), PaddingRight = UDim.new(0,16) })
+        Create("UIListLayout", { Parent = card, Padding = UDim.new(0,12) })
+        if title then Create("TextLabel", { Parent = card, Size = UDim2.new(1,0,0,14), BackgroundTransparency = 1, Text = title:upper(), Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = CONFIG.Accent, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 5 }) end
         return card
     end
 
     local function CreateToggle(parent, text, bindKey, default, cb, order)
-        local row = Create("Frame", { Parent = parent, Size = UDim2.new(1,0,0,28), BackgroundTransparency = 1, LayoutOrder = order or 1 })
-        local bindBtn = Create("TextButton", { Parent = row, Size = UDim2.new(0,50,0,20), Position = UDim2.new(1,-70,0.5,-10), BackgroundColor3 = Color3.fromRGB(35,35,45), Text = BINDS[bindKey] and BINDS[bindKey].Name or "None", Font = Enum.Font.Gotham, TextSize = 10, TextColor3 = CONFIG.TextDark, BorderSizePixel = 0, ZIndex = 6 }, { Corner(4) })
+        local row = Create("Frame", { Parent = parent, Size = UDim2.new(1,0,0,30), BackgroundTransparency = 1, LayoutOrder = order or 1 })
+        local bindBtn = Create("TextButton", { Parent = row, Size = UDim2.new(0,50,0,22), Position = UDim2.new(1,-70,0.5,-11), BackgroundColor3 = Color3.fromRGB(35,35,45), Text = BINDS[bindKey] and BINDS[bindKey].Name or "None", Font = Enum.Font.GothamBold, TextSize = 10, TextColor3 = CONFIG.TextDark, BorderSizePixel = 0, ZIndex = 6 }, { Corner(6) })
         bindBtn.MouseButton1Click:Connect(function() end)
         bindBtn.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton3 then if State.WaitingForBind then return end; bindBtn.Text = "..."; State.WaitingForBind = function(kc) BINDS[bindKey] = kc; bindBtn.Text = kc.Name; State.WaitingForBind = nil; Notify("Binded "..text.." to "..kc.Name, 1.5) end end end)
-        Create("TextLabel", { Parent = row, Size = UDim2.new(1,-120,1,0), BackgroundTransparency = 1, Text = text, Font = Enum.Font.Gotham, TextSize = 13, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 5 })
-        local sw = Create("Frame", { Parent = row, Size = UDim2.new(0,28,0,14), Position = UDim2.new(1,-28,0.5,-7), BackgroundColor3 = default and CONFIG.Accent or Color3.fromRGB(40,40,50), BorderSizePixel = 0, ZIndex = 5 }, { Corner(7) })
-        local kn = Create("Frame", { Parent = sw, Size = UDim2.new(0,10,0,10), Position = default and UDim2.new(1,-12,0.5,-5) or UDim2.new(0,2,0.5,-5), BackgroundColor3 = Color3.new(1,1,1), BorderSizePixel = 0, ZIndex = 6 }, { Corner(5) })
+        Create("TextLabel", { Parent = row, Size = UDim2.new(1,-120,1,0), BackgroundTransparency = 1, Text = text, Font = Enum.Font.GothamMedium, TextSize = 13, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 5 })
+        local sw = Create("Frame", { Parent = row, Size = UDim2.new(0,32,0,16), Position = UDim2.new(1,-32,0.5,-8), BackgroundColor3 = default and CONFIG.Accent or Color3.fromRGB(40,40,50), BorderSizePixel = 0, ZIndex = 5 }, { Corner(8) })
+        local kn = Create("Frame", { Parent = sw, Size = UDim2.new(0,12,0,12), Position = default and UDim2.new(1,-14,0.5,-6) or UDim2.new(0,2,0.5,-6), BackgroundColor3 = Color3.new(1,1,1), BorderSizePixel = 0, ZIndex = 6 }, { Corner(6) })
         local state = default
         local click = Create("TextButton", { Parent = row, Size = UDim2.new(1,0,1,0), BackgroundTransparency = 1, Text = "", ZIndex = 7 })
-        click.MouseButton1Click:Connect(function() state = not state; TweenService:Create(sw, TweenInfo.new(0.2), { BackgroundColor3 = state and CONFIG.Accent or Color3.fromRGB(40,40,50) }):Play(); TweenService:Create(kn, TweenInfo.new(0.2), { Position = state and UDim2.new(1,-12,0.5,-5) or UDim2.new(0,2,0.5,-5) }):Play(); cb(state) end)
-        RegisterSearch({ row = row, text = text:lower() })
+        click.MouseButton1Click:Connect(function() state = not state; TweenService:Create(sw, TweenInfo.new(0.2), { BackgroundColor3 = state and CONFIG.Accent or Color3.fromRGB(40,40,50) }):Play(); TweenService:Create(kn, TweenInfo.new(0.2), { Position = state and UDim2.new(1,-14,0.5,-6) or UDim2.new(0,2,0.5,-6) }):Play(); cb(state) end)
     end
 
     local function CreateSlider(parent, text, min, max, default, suffix, cb, order)
-        local row = Create("Frame", { Parent = parent, Size = UDim2.new(1,0,0,44), BackgroundTransparency = 1, LayoutOrder = order or 1 })
-        Create("TextLabel", { Parent = row, Size = UDim2.new(1,-60,0,18), BackgroundTransparency = 1, Text = text, Font = Enum.Font.Gotham, TextSize = 13, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 5 })
-        local val = Create("TextLabel", { Parent = row, Size = UDim2.new(0,60,0,18), Position = UDim2.new(1,-60,0,0), BackgroundTransparency = 1, Text = tostring(default) .. (suffix or ""), Font = Enum.Font.GothamMedium, TextSize = 13, TextColor3 = CONFIG.Accent, TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 5 })
-        local track = Create("Frame", { Parent = row, Size = UDim2.new(1,0,0,3), Position = UDim2.new(0,0,1,-10), BackgroundColor3 = Color3.fromRGB(30,30,40), BorderSizePixel = 0, ZIndex = 5 }, { Corner(2) })
+        local row = Create("Frame", { Parent = parent, Size = UDim2.new(1,0,0,46), BackgroundTransparency = 1, LayoutOrder = order or 1 })
+        Create("TextLabel", { Parent = row, Size = UDim2.new(1,-60,0,20), BackgroundTransparency = 1, Text = text, Font = Enum.Font.GothamMedium, TextSize = 13, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 5 })
+        local val = Create("TextLabel", { Parent = row, Size = UDim2.new(0,60,0,20), Position = UDim2.new(1,-60,0,0), BackgroundTransparency = 1, Text = tostring(default) .. (suffix or ""), Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = CONFIG.Accent, TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 5 })
+        local track = Create("Frame", { Parent = row, Size = UDim2.new(1,0,0,4), Position = UDim2.new(0,0,1,-8), BackgroundColor3 = Color3.fromRGB(30,30,40), BorderSizePixel = 0, ZIndex = 5 }, { Corner(2) })
         local fill = Create("Frame", { Parent = track, Size = UDim2.new((default-min)/(max-min),0,1,0), BackgroundColor3 = CONFIG.Accent, BorderSizePixel = 0, ZIndex = 6 }, { Corner(2) })
-        local knob = Create("Frame", { Parent = track, Size = UDim2.new(0,10,0,10), Position = UDim2.new((default-min)/(max-min),-5,0.5,-5), BackgroundColor3 = Color3.new(1,1,1), BorderSizePixel = 0, ZIndex = 7 }, { Corner(5) })
-        local hit = Create("TextButton", { Parent = row, Size = UDim2.new(1,0,0,18), Position = UDim2.new(0,0,1,-16), BackgroundTransparency = 1, Text = "", ZIndex = 8 })
+        local knob = Create("Frame", { Parent = track, Size = UDim2.new(0,12,0,12), Position = UDim2.new((default-min)/(max-min),-6,0.5,-6), BackgroundColor3 = Color3.new(1,1,1), BorderSizePixel = 0, ZIndex = 7 }, { Corner(6) })
+        local hit = Create("TextButton", { Parent = row, Size = UDim2.new(1,0,0,20), Position = UDim2.new(0,0,1,-18), BackgroundTransparency = 1, Text = "", ZIndex = 8 })
         local drag = false
-        local function update(x) local rel = math.clamp((x - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1); local v = math.floor(min + (max - min) * rel); fill.Size = UDim2.new(rel,0,1,0); knob.Position = UDim2.new(rel,-5,0.5,-5); val.Text = tostring(v) .. (suffix or ""); cb(v) end
+        local function update(x) local rel = math.clamp((x - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1); local v = math.floor(min + (max - min) * rel); fill.Size = UDim2.new(rel,0,1,0); knob.Position = UDim2.new(rel,-6,0.5,-6); val.Text = tostring(v) .. (suffix or ""); cb(v) end
         hit.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then drag = true; update(i.Position.X) end end)
         Track(UserInputService.InputChanged:Connect(function(i) if drag and i.UserInputType == Enum.UserInputType.MouseMovement then update(i.Position.X) end end))
         Track(UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then drag = false end end))
-        RegisterSearch({ row = row, text = text:lower() })
     end
     
     local function CreateButton(parent, text, callback, order)
-        local btn = Create("TextButton", { Parent = parent, Size = UDim2.new(1,0,0,32), BackgroundColor3 = Color3.fromRGB(30,30,40), Text = text, Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = CONFIG.Text, BorderSizePixel = 0, AutoButtonColor = false, LayoutOrder = order or 1, ZIndex = 5 }, { Corner(6) })
+        local btn = Create("TextButton", { Parent = parent, Size = UDim2.new(1,0,0,36), BackgroundColor3 = Color3.fromRGB(30,30,40), Text = text, Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = CONFIG.Text, BorderSizePixel = 0, AutoButtonColor = false, LayoutOrder = order or 1, ZIndex = 5 }, { Corner(8) })
         btn.MouseEnter:Connect(function() TweenService:Create(btn, TweenInfo.new(0.15), { BackgroundColor3 = CONFIG.Accent, TextColor3 = Color3.new(0,0,0) }):Play() end)
         btn.MouseLeave:Connect(function() TweenService:Create(btn, TweenInfo.new(0.15), { BackgroundColor3 = Color3.fromRGB(30,30,40), TextColor3 = CONFIG.Text }):Play() end)
         btn.MouseButton1Click:Connect(callback)
-        RegisterSearch({ row = btn, text = text:lower() })
     end
 
     local HomeTab = CreateTab("Home", "🏠", 1); local CombatTab = CreateTab("Combat", "⚔️", 2); local VisualsTab = CreateTab("Visuals", "👁️", 3)
     local CosmeticsTab = CreateTab("Cosmetics", "✨", 4); local MovementTab = CreateTab("Movement", "🏃", 5); local TrollTab = CreateTab("Troll", "😈", 6); local SettingsTab = CreateTab("Configs", "⚙️", 7)
-
-    -- HOME
-    local pCard = CreateCard(HomeTab, "Player")
-    Create("TextLabel", { Parent = pCard, Size = UDim2.new(1,0,0,20), BackgroundTransparency = 1, Text = "User: " .. LocalPlayer.Name, Font = Enum.Font.Gotham, TextSize = 13, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 5 })
 
     -- COMBAT
     local aimCard = CreateCard(CombatTab, "Aimbot")
@@ -452,7 +454,11 @@ local function BuildUI()
     CreateToggle(espCard, "Name", "ESPName", CONFIG.ESPName, function(v) CONFIG.ESPName = v end, 4)
     CreateToggle(espCard, "Health", "ESPHealth", CONFIG.ESPHealth, function(v) CONFIG.ESPHealth = v end, 5)
     CreateToggle(espCard, "Skeleton", "Skeleton", CONFIG.ESPSkeleton, function(v) CONFIG.ESPSkeleton = v end, 6)
+    CreateToggle(espCard, "Tracer", "Tracer", CONFIG.ESPTracer, function(v) CONFIG.ESPTracer = v end, 7)
     
+    local miscCard = CreateCard(VisualsTab, "Misc")
+    CreateSlider(miscCard, "Camera FOV (Stretch)", 50, 120, CONFIG.FOV, "", function(v) CONFIG.FOV = v; Camera.FieldOfView = v end, 1)
+
     local chamsCard = CreateCard(VisualsTab, "Chams")
     CreateToggle(chamsCard, "Enemy Chams", "ChamsEnemy", CONFIG.ChamsEnemy, function(v) CONFIG.ChamsEnemy = v end, 1)
     CreateToggle(chamsCard, "Self Chams", "ChamsSelf", CONFIG.ChamsSelf, function(v) CONFIG.ChamsSelf = v end, 2)
@@ -463,10 +469,9 @@ local function BuildUI()
     CreateToggle(cosCard, "Halo", "Halo", CONFIG.HaloEnabled, function(v) CONFIG.HaloEnabled = v end, 1)
     CreateSlider(cosCard, "Halo Balls", 5, 50, CONFIG.HaloCount, "", function(v) CONFIG.HaloCount = v end, 2)
     CreateToggle(cosCard, "Orbit", "Orbit", CONFIG.OrbitEnabled, function(v) CONFIG.OrbitEnabled = v end, 3)
-    CreateSlider(cosCard, "Orbit Balls", 3, 20, CONFIG.OrbitCount, "", function(v) CONFIG.OrbitCount = v end, 4)
-    CreateToggle(cosCard, "Wings", "Wings", CONFIG.WingsEnabled, function(v) CONFIG.WingsEnabled = v end, 5)
-    CreateToggle(cosCard, "Crown", "Crown", CONFIG.CrownEnabled, function(v) CONFIG.CrownEnabled = v end, 6)
-    CreateToggle(cosCard, "Pentagram", "Pentagram", CONFIG.PentagramEnabled, function(v) CONFIG.PentagramEnabled = v end, 7)
+    CreateToggle(cosCard, "Wings", "Wings", CONFIG.WingsEnabled, function(v) CONFIG.WingsEnabled = v end, 4)
+    CreateToggle(cosCard, "Crown", "Crown", CONFIG.CrownEnabled, function(v) CONFIG.CrownEnabled = v end, 5)
+    CreateToggle(cosCard, "Pentagram", "Pentagram", CONFIG.PentagramEnabled, function(v) CONFIG.PentagramEnabled = v end, 6)
 
     -- MOVEMENT
     local flyCard = CreateCard(MovementTab, "Flight")
@@ -475,7 +480,7 @@ local function BuildUI()
     CreateToggle(flyCard, "Noclip", "Noclip", CONFIG.NoclipEnabled, function(v) CONFIG.NoclipEnabled = v end, 3)
     CreateToggle(flyCard, "Speed", "Speed", CONFIG.SpeedEnabled, function(v) CONFIG.SpeedEnabled = v end, 4)
 
-    -- TROLL (FLING MENU)
+    -- TROLL
     local flingCard = CreateCard(TrollTab, "Targeted Fling")
     local flingList = Create("ScrollingFrame", { Parent = flingCard, Size = UDim2.new(1,0,0,150), BackgroundTransparency = 1, ScrollBarThickness = 2, AutomaticCanvasSize = Enum.AutomaticSize.Y })
     Create("UIListLayout", { Parent = flingList, Padding = UDim.new(0, 4) })
@@ -485,9 +490,9 @@ local function BuildUI()
         for _, v in ipairs(flingList:GetChildren()) do if v:IsA("Frame") or v:IsA("TextButton") then v:Destroy() end end
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= LocalPlayer then
-                local row = Create("Frame", { Parent = flingList, Size = UDim2.new(1,0,0,28), BackgroundColor3 = Color3.fromRGB(30,30,40), BorderSizePixel = 0 }, { Corner(4) })
-                Create("TextLabel", { Parent = row, Size = UDim2.new(1,-100,1,0), Position = UDim2.new(0,5,0,0), BackgroundTransparency = 1, Text = p.Name, Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left })
-                local mBtn = Create("TextButton", { Parent = row, Size = UDim2.new(0,60,1,0), Position = UDim2.new(1,-65,0,0), BackgroundColor3 = Color3.fromRGB(45,45,55), Text = "Velocity", Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = CONFIG.Accent, BorderSizePixel = 0 }, { Corner(4) })
+                local row = Create("Frame", { Parent = flingList, Size = UDim2.new(1,0,0,30), BackgroundColor3 = Color3.fromRGB(30,30,40), BorderSizePixel = 0 }, { Corner(6) })
+                Create("TextLabel", { Parent = row, Size = UDim2.new(1,-100,1,0), Position = UDim2.new(0,8,0,0), BackgroundTransparency = 1, Text = p.Name, Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = CONFIG.Text, TextXAlignment = Enum.TextXAlignment.Left })
+                local mBtn = Create("TextButton", { Parent = row, Size = UDim2.new(0,70,0,22), Position = UDim2.new(1,-78,0.5,-11), BackgroundColor3 = Color3.fromRGB(45,45,55), Text = "Velocity", Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = CONFIG.Accent, BorderSizePixel = 0 }, { Corner(4) })
                 mBtn.MouseButton1Click:Connect(function() local m = table.find(flingMethods, mBtn.Text) or 1; if p.Character then ForceFling(p.Character, m); Notify("Flung "..p.Name.." ("..mBtn.Text..")", 2) end end)
                 mBtn.MouseButton2Click:Connect(function() local current = table.find(flingMethods, mBtn.Text) or 1; current = current % #flingMethods + 1; mBtn.Text = flingMethods[current] end)
             end
@@ -495,12 +500,12 @@ local function BuildUI()
     end
     CreateButton(flingCard, "Refresh List", refreshFlingList, 1)
 
-    -- CONFIGS (FIXED)
+    -- CONFIGS
     local confCard = CreateCard(SettingsTab, "Config System")
     if makefolder and not isfolder(CONFIG_FOLDER) then makefolder(CONFIG_FOLDER) end
     
-    Create("TextLabel", { Parent = confCard, Size = UDim2.new(1,0,0,20), BackgroundTransparency = 1, Text = "Config Name:", Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = CONFIG.TextDark, TextXAlignment = Enum.TextXAlignment.Left })
-    local nameBox = Create("TextBox", { Parent = confCard, Size = UDim2.new(1,0,0,30), BackgroundColor3 = Color3.fromRGB(25,25,35), Text = "", Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = CONFIG.Text, BorderSizePixel = 0, PlaceholderText = "Enter name...", PlaceholderColor3 = CONFIG.TextDark }, { Corner(6) })
+    Create("TextLabel", { Parent = confCard, Size = UDim2.new(1,0,0,20), BackgroundTransparency = 1, Text = "Config Name:", Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = CONFIG.TextDark, TextXAlignment = Enum.TextXAlignment.Left })
+    local nameBox = Create("TextBox", { Parent = confCard, Size = UDim2.new(1,0,0,34), BackgroundColor3 = Color3.fromRGB(25,25,35), Text = "", Font = Enum.Font.GothamMedium, TextSize = 13, TextColor3 = CONFIG.Text, BorderSizePixel = 0, PlaceholderText = "Enter name...", PlaceholderColor3 = CONFIG.TextDark }, { Corner(6) })
     
     local listFrame = Create("Frame", { Parent = confCard, Size = UDim2.new(1,0,0,120), BackgroundColor3 = Color3.fromRGB(22,22,28), BorderSizePixel = 0 }, { Corner(6) })
     Create("UIPadding", { Parent = listFrame, PaddingTop = UDim.new(0,5), PaddingBottom = UDim.new(0,5), PaddingLeft = UDim.new(0,5), PaddingRight = UDim.new(0,5) })
@@ -511,7 +516,7 @@ local function BuildUI()
         if listfiles and isfolder(CONFIG_FOLDER) then
             for _, file in ipairs(listfiles(CONFIG_FOLDER)) do
                 local name = file:gsub(CONFIG_FOLDER.."/", ""):gsub("%.json", "")
-                local btn = Create("TextButton", { Parent = listFrame, Size = UDim2.new(1,0,0,24), BackgroundColor3 = Color3.fromRGB(35,35,45), Text = name, Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = CONFIG.Text, BorderSizePixel = 0 }, { Corner(4) })
+                local btn = Create("TextButton", { Parent = listFrame, Size = UDim2.new(1,0,0,26), BackgroundColor3 = Color3.fromRGB(35,35,45), Text = name, Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = CONFIG.Text, BorderSizePixel = 0 }, { Corner(4) })
                 btn.MouseButton1Click:Connect(function() nameBox.Text = name end)
             end
         end
@@ -532,8 +537,8 @@ local function BuildUI()
     CreateButton(confCard, "Refresh List", refreshConfigList, 3)
     refreshConfigList()
 
-    Pages["Home"].Visible = true; Tabs["Home"].btn.TextColor3 = CONFIG.Accent; Tabs["Home"].btn.BackgroundTransparency = 0.15; Tabs["Home"].stroke.Transparency = 0.4
-    menu.Visible = true; TweenService:Create(menu, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = UDim2.new(0.5, -320, 0.5, -230) }):Play()
+    Pages["Home"].Visible = true; Tabs["Home"].btn.TextColor3 = CONFIG.Accent; Tabs["Home"].btn.BackgroundTransparency = 0.1; Tabs["Home"].stroke.Transparency = 0.4
+    menu.Visible = true; TweenService:Create(menu, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = UDim2.new(0.5, -330, 0.5, -240) }):Play()
 
     local drag, dragStart, startPos
     header.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then drag = true; dragStart = i.Position; startPos = menu.Position end end)
@@ -548,8 +553,8 @@ Track(UserInputService.InputBegan:Connect(function(input, gp)
     local k = input.KeyCode; if k == Enum.KeyCode.Unknown then return end
     if k == BINDS.ToggleMenu and State.menuFrame then
         local m = State.menuFrame
-        if m.Visible then TweenService:Create(m, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Position = UDim2.new(0.5, -320, 1, 500) }):Play(); task.wait(0.3); m.Visible = false
-        else m.Visible = true; TweenService:Create(m, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = UDim2.new(0.5, -320, 0.5, -230) }):Play() end
+        if m.Visible then TweenService:Create(m, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Position = UDim2.new(0.5, -330, 1, 500) }):Play(); task.wait(0.3); m.Visible = false
+        else m.Visible = true; TweenService:Create(m, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = UDim2.new(0.5, -330, 0.5, -240) }):Play() end
     elseif k == BINDS.Fly then CONFIG.FlyEnabled = not CONFIG.FlyEnabled; if not CONFIG.FlyEnabled then StopFly() end; Notify("Fly: "..(CONFIG.FlyEnabled and "ON" or "OFF"), 1.5)
     elseif k == BINDS.Noclip then CONFIG.NoclipEnabled = not CONFIG.NoclipEnabled; Notify("Noclip: "..(CONFIG.NoclipEnabled and "ON" or "OFF"), 1.5)
     elseif k == BINDS.Speed then CONFIG.SpeedEnabled = not CONFIG.SpeedEnabled; Notify("Speed: "..(CONFIG.SpeedEnabled and "ON" or "OFF"), 1.5)
