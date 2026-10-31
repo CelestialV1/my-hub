@@ -1,5 +1,7 @@
+print("CELESTIAL v7.6 УСПЕШНО ЗАГРУЖЕН")
+
 -- ============================================================
--- CELESTIAL v7.6 — FIXED MOVEMENT & SILENT AIM
+-- CELESTIAL v7.6 — FIXED MOVEMENT
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -13,12 +15,14 @@ local Lighting = game:GetService("Lighting")
 local VIM = game:GetService("VirtualInputManager")
 local LocalPlayer = Players.LocalPlayer
 
+-- Безопасное получение модуля управления
+local PlayerScripts = LocalPlayer:WaitForChild("PlayerScripts")
+local PlayerModule = require(PlayerScripts:WaitForChild("PlayerModule"))
+local Controls = PlayerModule:GetControls()
+
 local CELESTIAL_ASSET = "rbxassetid://94872985442978"
 local VERSION = "7.6"
 
--- ============================================================
--- CONFIG
--- ============================================================
 local CONFIG = {
     Accent   = Color3.fromRGB(160, 110, 255),
     Accent2  = Color3.fromRGB(255, 100, 200),
@@ -66,9 +70,6 @@ local Keybinds = {
     Unload = Enum.KeyCode.Delete, Panic = Enum.KeyCode.P,
 }
 
--- ============================================================
--- STATE
--- ============================================================
 local State = {
     Running = true,
     Connections = {},
@@ -123,9 +124,6 @@ local function ApplyGradient(stroke)
     g.Parent = stroke
 end
 
--- ============================================================
--- NOTIFICATIONS
--- ============================================================
 local notifGui = Instance.new("ScreenGui")
 notifGui.Name = "CelestialNotifs"
 notifGui.ResetOnSpawn = false
@@ -167,9 +165,6 @@ local function Notify(text, duration)
     end)
 end
 
--- ============================================================
--- COSMETICS
--- ============================================================
 local function BuildCosmetics()
     if not State.Cosmetics.Halo then
         local m = Instance.new("Model", Workspace); m.Name = "Celestial_Halo"
@@ -317,9 +312,6 @@ local function UpdateCosmetics()
     end
 end
 
--- ============================================================
--- CHAMS
--- ============================================================
 local function ApplyChams(char)
     if not char then return end
     local hl = char:FindFirstChild("Celestial_Chams")
@@ -343,9 +335,6 @@ local function RemoveChams(char)
     end
 end
 
--- ============================================================
--- MOVEMENT / TROLL HELPERS
--- ============================================================
 local function StopFly()
     local char = LocalPlayer.Character
     if not char then return end
@@ -355,6 +344,7 @@ local function StopFly()
             if c.Name == "Celestial_FlyBV" or c.Name == "Celestial_FlyBG" then c:Destroy() end
         end
     end
+    Controls:Enable() -- Safe enable
 end
 
 local function ForceFling(char)
@@ -419,9 +409,6 @@ local function RestoreVis()
     end
 end
 
--- ============================================================
--- SONGS
--- ============================================================
 local SONGS = {
     ["Megalovania"] = {{"E",0.1},{"D",0.1},{"C",0.1},{"D",0.1},{"E",0.1},{"E",0.1},{"E",0.1},{"D",0.1},{"D",0.1},{"D",0.1},{"E",0.1},{"G",0.1},{"G",0.1},{"E",0.2},{"D",0.1},{"C",0.1},{"D",0.1},{"E",0.1},{"E",0.1},{"E",0.1},{"F",0.1},{"E",0.1},{"D",0.1},{"D",0.1},{"E",0.1},{"D",0.1},{"C",0.2}},
     ["Coffin Dance"] = {{"A",0.25},{"A",0.25},{"C",0.25},{"A",0.25},{"D",0.25},{"A",0.25},{"C",0.25},{"A",0.5},{"F",0.25},{"F",0.25},{"G",0.25},{"F",0.25},{"D",0.25},{"C",0.25},{"A",0.25}},
@@ -466,9 +453,6 @@ local function PlaySong(name)
     end)
 end
 
--- ============================================================
--- UI
--- ============================================================
 local function BuildUI()
     local playerGui = LocalPlayer:WaitForChild("PlayerGui")
 
@@ -1077,9 +1061,6 @@ local function BuildUI()
     end))
 end
 
--- ============================================================
--- COMBAT
--- ============================================================
 local function GetPart(char)
     if not char then return nil end
     if CONFIG.AimbotPart == "Head" then return char:FindFirstChild("Head") end
@@ -1123,9 +1104,6 @@ local function GetBestTarget()
     return best
 end
 
--- ============================================================
--- MAIN LOOPS
--- ============================================================
 Track(RunService.Stepped:Connect(function(_, dt)
     if not State.Running then return end
     local char = LocalPlayer.Character
